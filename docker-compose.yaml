@@ -1,0 +1,35 @@
+version: "3.7"
+
+services:
+  mysql:
+    image: mysql:8.0
+    command: --default-authentication-plugin=mysql_native_password
+    restart: always
+    ports:
+      - 3306:3306
+    volumes:
+      - ./mysql:/var/lib/mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: users
+      MYSQL_USER: abc
+      MYSQL_PASSWORD: abc
+    networks:
+      - default
+
+  mongo:
+    image: mongo
+    volumes:
+      - ./docker/mongo:/data
+    ports:
+      - 27017:27017
+    restart: always
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: example
+    networks:
+      - default
+
+networks:
+  default:
+    driver: bridge
