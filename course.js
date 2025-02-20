@@ -10,13 +10,13 @@ const {
     MYSQL_HOST,
     MYSQL_USER,
     MYSQL_PASSWORD,
-    MYSQL_DATABASE_AUTH,
+    MYSQL_DATABASE_COURSE,
     MONGO_URL,
-    MONGO_DATABASE_ADMIN,
     BATCH_SIZE,
     NEW_SITE_ID,
-    MYSQL_DATABASE_ROLE,
     OLD_SITE_ID,
+    MONGO_DATABASE_COURSE,
+    MONGO_DATABASE_ADMIN
 } = process.env;
 
 
@@ -26,16 +26,7 @@ async function connectMySQL() {
         host: MYSQL_HOST,
         user: MYSQL_USER,
         password: MYSQL_PASSWORD,
-        database: MYSQL_DATABASE_AUTH,
-    });
-}
-
-async function connectTableRole() {
-    return mysql.createConnection({
-        host: MYSQL_HOST,
-        user: MYSQL_USER,
-        password: MYSQL_PASSWORD,
-        database: MYSQL_DATABASE_ROLE,
+        database: MYSQL_DATABASE_COURSE,
     });
 }
 
@@ -48,51 +39,80 @@ async function fetchBatch(sqlConnection, tableName, offset, limit) {
     return rows;
 }
 
-async function findRole(records) {
-    if (records.length == 0) return [];
-    const ids = records.map(item => item.Id)
-    const query = `SELECT * FROM users WHERE mobiedu_user_id IN (${ids.join(",")})`;
-    const [rows] = await sqlConnectionRole.execute(query);
+async function findCategory(records, db) {
+    if (records.length === 0) return [];
+    const ids = records.map(item => item.IdCategory);
+    const rows = await db.collection("courseCatalog").find({ oldId: { $in: ids } }).toArray();
     return rows;
 }
 
-async function migrateTable(sqlConnection, mongoDb, tableName) {
+async function findUsers(records, mongoDbUser) {
+    if (records.length === 0) return [];
+
+    const userIds = [];
+
+    records.forEach(element => {
+        if (element?.IDTeacher) userIds.push(element?.IDTeacher)
+        if (element?.CreatedBy) userIds.push(element?.CreatedBy)
+    });
+
+    console.log({ userIds });
+
+    const rows = await mongoDbUser.collection("user").find({ mobieduUserId: { $in: userIds } }).toArray();
+
+    console.log({ rows });
+    return rows;
+}
+
+async function migrateTable(sqlConnection, mongoDbCourse, tableName, mongoDbUser) {
     console.log(`🔄 Đang di chuyển bảng ${tableName}...`);
 
     let offset = 0;
     while (true) {
         const rows = await fetchBatch(sqlConnection, tableName, offset, BATCH_SIZE);
 
-        const roles = await findRole(rows);
+        const category = await findCategory(rows, mongoDbCourse);
+        const users = await findUsers(rows, mongoDbUser);
 
-        const mappedUsers = rows.map((row) => ({
-            accessFailedCount: 0,
-            address: "",
-            avatar: row.AvatarUrl ? row.AvatarUrl.replace("https://cdn4t.mobiedu.vn", "https://media-moocs.mobifone.vn") : "",
-            birthday: new Date(row.Birthday),
-            dateLogin: row.LastLoginDate,
-            deletedOn: null,
-            email: row.Email || "",
-            fullname: row.FullName,
-            gender: row.IdGender || 0,
-            exploreField: 1,
+        const mappedCourse = rows.map((row) => ({
+            name: row.Name,
+            authorId: users.find(item => row.CreatedBy == item.mobieduUserId)?._id || '',
+            isHidden: row.Status,
+            avatarURL: row.ThumbnailFileUrl,
+            coverImageURL: row.CoverFileUrl,
+            introVideoURL: "",
+            catalogId: category.find(item => row.IdCategory == item.oldId)?._id || '',
+            teacherId: users.find(item => row.IDTeacher == item.mobieduUserId)?._id || '',
+            teacherIds: users.find(item => row.IDTeacher == item.mobieduUserId)?._id || '',
+
+            intro: row.WelcomeCourse,
+            info: row.AboutCourse,
+            benefit: row.Benefits,
             siteId: +NEW_SITE_ID,
-            positionId: "",
-            infoManagementLevel: null,
-            isLockoutEnabled: row.IsBlocked == 0 ? true : false,
-            lockoutEndDate: null,
-            passwordHash: row.Pwd,
-            phone: row.Phone || "",
-            pwd: "Migrate@2025",
-            securityStamp: "",
-            status: 1,
-            timeUpdate: null,
-            userName: row.Email,
-            mobieduUserId: row.Id,
-            listRoles: null,
-            listPolicy: null,
-            role: roles.find(item => item.mobiedu_user_id == row.Id)?.role == "student" ? "STUDENT" : "ADMIN",
-            functionsTree: null,
+            isCommented: true,
+            totalRating: (row.Review || "")?.TotalReviews,
+            averageStar: (row.Review || "")?.TotalStars,
+            isSoftDeleted: row.IsDeleted,
+            chapters: null,
+            isRegister: true,
+            view: 10000,
+            status: row.Status == 1 ? 1 : 0,
+            createAt: row.CreatedAt,
+            updateAt: row.ModifiedAt,
+            backgroundCertificate: null,
+            companyId: -1,
+            createOn: null,
+            departmentId: null,
+            isCertification: true,
+            markingScheme: null,
+            numberChapter: null,
+            numberDocument: null,
+            numberJoin: null,
+            numberLesson: row.Price || 0,
+            requiredScore: row.SellingPrice || 0,
+            statusMarkScore: null,
+            timeEnd: row.EndDate,
+            timeStart: row.StartDate,
         }));
 
         // Kiểm tra nếu rows trống thì thoát khỏi vòng lặp
@@ -100,7 +120,7 @@ async function migrateTable(sqlConnection, mongoDb, tableName) {
             break;
         }
 
-        await mongoDb.collection('user').insertMany(mappedUsers);
+        await mongoDbCourse.collection('course').insertMany(mappedCourse);
 
         offset += BATCH_SIZE;
     }
@@ -108,17 +128,18 @@ async function migrateTable(sqlConnection, mongoDb, tableName) {
     console.log(`🏁 Hoàn tất di chuyển bảng ${tableName}!`);
 }
 
-const sqlConnectionRole = await connectTableRole()
 const sqlConnection = await connectMySQL();
 
 // Chạy quá trình di chuyển
 async function migrate() {
     const mongoClient = new MongoClient(MONGO_URL);
     await mongoClient.connect();
-    const mongoDb = mongoClient.db(MONGO_DATABASE_ADMIN);
+    const mongoDbCourse = mongoClient.db(MONGO_DATABASE_COURSE);
+    const mongoDbUser = mongoClient.db(MONGO_DATABASE_ADMIN);
+
 
     try {
-        await migrateTable(sqlConnection, mongoDb, 'Users');
+        await migrateTable(sqlConnection, mongoDbCourse, 'Courses', mongoDbUser);
     } catch (error) {
         console.error("❌ Lỗi khi di chuyển dữ liệu:", error);
     } finally {
