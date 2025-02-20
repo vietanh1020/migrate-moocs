@@ -1,5 +1,5 @@
 import mysql from "mysql2/promise";
-import { MongoClient } from "mongodb";
+import { MongoClient, ObjectId, UUID } from "mongodb";
 import dotenv from "dotenv";
 
 // Load biến môi trường từ .env
@@ -10,14 +10,13 @@ const {
     MYSQL_HOST,
     MYSQL_USER,
     MYSQL_PASSWORD,
-    MYSQL_DATABASE_NEWS,
+    MYSQL_DATABASE_COURSE,
     MONGO_URL,
-    MONGO_DATABASE_ADMIN,
+    MONGO_DATABASE_COURSE,
     BATCH_SIZE,
     NEW_SITE_ID,
     OLD_SITE_ID,
 } = process.env;
-
 
 // Kết nối MySQL
 async function connectMySQL() {
@@ -25,8 +24,17 @@ async function connectMySQL() {
         host: MYSQL_HOST,
         user: MYSQL_USER,
         password: MYSQL_PASSWORD,
-        database: MYSQL_DATABASE_NEWS,
+        database: MYSQL_DATABASE_COURSE,
     });
+}
+
+async function CountRecord(tableName) {
+    const query = `SELECT Count(*) FROM ${tableName} WHERE IdSite=${parseInt(OLD_SITE_ID)}`;
+    const [rows] = await sqlConnection.execute(query);
+    console.log(rows[0]?.['Count(*)']);
+
+    return rows[0]?.['Count(*)']
+
 }
 
 // Lấy dữ liệu theo từng batch
@@ -39,32 +47,47 @@ async function fetchBatch(sqlConnection, tableName, offset, limit) {
 }
 
 async function migrateTable(sqlConnection, mongoDb, tableName) {
+    const countRecord = await CountRecord(tableName)
+
     console.log(`🔄 Đang di chuyển bảng ${tableName}...`);
+
+
 
     let offset = 0;
     while (true) {
-        const rows = await fetchBatch(sqlConnection, tableName, offset, BATCH_SIZE);
+        const rows = await fetchBatch(sqlConnection, tableName, offset, countRecord);
 
+        const mappedNews = rows.map((row) => {
+            const id = new ObjectId();
+            console.log({ id });
+            return {
+                _id: id,
+                courseCatalogName: row.Name,
+                courseCatalogFather: row.IdParent,
+                description: row.Description,
+                isHidden: row.DisplayOrder,
+                courseCatalogLevel: row.IdParent ? 2 : 1,
+                createdAt: row.CreatedAt,
+                updatedAt: row.ModifiedAt,
+                oldId: row.Id,
+                siteId: +NEW_SITE_ID,
+            }
 
-        const mappedNews = rows.map((row) => ({
-            slug: row.Slug,
-            url_img: row.ThumbnailFileUrl ? row.ThumbnailFileUrl.replace("https://cdn4t.mobiedu.vn", "https://media-moocs.mobifone.vn") : "",
-            title: row.Title,
-            short_description: row.Description,
-            description: row.HtmlContent.replaceAll("https://cdn4t.mobiedu.vn", "https://media-moocs.mobifone.vn"),
-            status: row.ApproveStatus,
-            createdAt: row.CreatedAt,
-            category: null,
-            siteId: +NEW_SITE_ID,
-            view_count: row.ViewCounter,
-            view_fake: 0,
-            pin_type: 0,
-        }));
+        });
+
+        const resultCata = mappedNews.map((item) => {
+            if (item.courseCatalogFather) {
+                const IdParent = mappedNews.find(cata => item.courseCatalogFather == cata.oldId)?._id;
+                return { ...item, courseCatalogFather: IdParent }
+            } else {
+                return item
+            }
+        })
 
         // Kiểm tra nếu rows trống thì thoát khỏi vòng lặp
         if (!rows || rows.length === 0) break;
 
-        await mongoDb.collection('news').insertMany(mappedNews);
+        await mongoDb.collection('courseCatalog').insertMany(resultCata);
 
         offset += BATCH_SIZE;
     }
@@ -78,10 +101,10 @@ const sqlConnection = await connectMySQL();
 async function migrate() {
     const mongoClient = new MongoClient(MONGO_URL);
     await mongoClient.connect();
-    const mongoDb = mongoClient.db(MONGO_DATABASE_ADMIN);
+    const mongoDb = mongoClient.db(MONGO_DATABASE_COURSE);
 
     try {
-        await migrateTable(sqlConnection, mongoDb, 'Post');
+        await migrateTable(sqlConnection, mongoDb, 'CourseCategories');
     } catch (error) {
         console.error("❌ Lỗi khi di chuyển dữ liệu:", error);
     } finally {
