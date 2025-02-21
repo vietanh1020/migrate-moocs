@@ -10,12 +10,12 @@ const {
     MYSQL_HOST,
     MYSQL_USER,
     MYSQL_PASSWORD,
-    MYSQL_DATABASE_NEWS,
+    MONGO_DATABASE_LEVEL,
     MONGO_URL,
-    MONGO_DATABASE_ADMIN,
     BATCH_SIZE,
     NEW_SITE_ID,
     OLD_SITE_ID,
+    ID_ADMIN_SITE,
 } = process.env;
 
 // Kết nối MySQL
@@ -24,49 +24,65 @@ async function connectMySQL() {
         host: MYSQL_HOST,
         user: MYSQL_USER,
         password: MYSQL_PASSWORD,
-        database: MYSQL_DATABASE_NEWS,
+        database: MONGO_DATABASE_LEVEL,
     });
 }
+
 // Lấy dữ liệu theo từng batch
-async function fetchBatch(sqlConnection, tableName, offset, limit) {
-    const query = `SELECT * FROM ${tableName} WHERE IdSite=${parseInt(OLD_SITE_ID)} LIMIT ${parseInt(limit)} OFFSET ${parseInt(offset)}`;
+async function fetchBatch(sqlConnection, tableName, offset, limit, level2_OldIds) {
+    const query = `
+    SELECT * FROM ${tableName}
+    WHERE IdSite = ${parseInt(OLD_SITE_ID)}
+    AND IdParent IN (${level2_OldIds.map(id => parseInt(id)).join(",")})
+    LIMIT ${parseInt(limit)} OFFSET ${parseInt(offset)}
+    `;
+
     const [rows] = await sqlConnection.execute(query);
 
     console.log(`🟢 Lấy ${rows.length} bản ghi từ ${tableName} (Offset: ${offset})`);
     return rows;
 }
 
+async function findLevel2(db) {
+    const rows = await db.collection("level-2").find().toArray();
+    return rows;
+}
+
+
 async function migrateTable(sqlConnection, mongoDb, tableName) {
     console.log(`🔄 Đang di chuyển bảng ${tableName}...`);
 
     let offset = 0;
-    while (true) {
-        const rows = await fetchBatch(sqlConnection, tableName, offset, BATCH_SIZE);
 
-        const mappedNews = rows.map((row) => ({
-            slug: row.Slug,
-            url_img: row.ThumbnailFileUrl ? row.ThumbnailFileUrl.replace("https://cdn4t.mobiedu.vn", "https://media-moocs.mobifone.vn") : "",
-            title: row.Title,
-            short_description: row.Description,
-            description: row.HtmlContent.replaceAll("https://cdn4t.mobiedu.vn", "https://media-moocs.mobifone.vn"),
-            status: row.ApproveStatus,
-            createdAt: row.CreatedAt,
-            category: null,
-            siteId: +NEW_SITE_ID,
-            view_count: row.ViewCounter,
-            view_fake: 0,
-            pin_type: 0,
-        }));
+    const level2 = findLevel2()
+    const level2_OldIds = level2.map(item => item.oldId)
+
+
+    while (true) {
+        const rows = await fetchBatch(sqlConnection, tableName, offset, BATCH_SIZE, level2_OldIds);
+
+        const mappedNews = rows.map((row) => {
+            const level2Find = level2.find(item => item.oldID === row.IdParent)
+            return {
+                name: row.Name,
+                managerId: ID_ADMIN_SITE,
+                createdAt: null,
+                totalUser: 0,
+                level1: level2Find?.level1,
+                level1_name: level2Find?.level1_name,
+                level2: level2Find?._id,
+                level2_name: level2Find?.name,
+                siteId: +NEW_SITE_ID
+            }
+        });
 
         // Kiểm tra nếu rows trống thì thoát khỏi vòng lặp
         if (!rows || rows.length === 0) break;
 
-        await mongoDb.collection('news').insertMany(mappedNews);
+        await mongoDb.collection('level-3').insertMany(mappedNews);
 
         offset += BATCH_SIZE;
     }
-
-    console.log(`🏁 Hoàn tất di chuyển bảng ${tableName}!`);
 }
 
 const sqlConnection = await connectMySQL();
@@ -75,10 +91,10 @@ const sqlConnection = await connectMySQL();
 async function migrate() {
     const mongoClient = new MongoClient(MONGO_URL);
     await mongoClient.connect();
-    const mongoDb = mongoClient.db(MONGO_DATABASE_ADMIN);
+    const mongoDb = mongoClient.db(MONGO_DATABASE_LEVEL);
 
     try {
-        await migrateTable(sqlConnection, mongoDb, 'Post');
+        await migrateTable(sqlConnection, mongoDb, 'UnitManagements');
     } catch (error) {
         console.error("❌ Lỗi khi di chuyển dữ liệu:", error);
     } finally {
