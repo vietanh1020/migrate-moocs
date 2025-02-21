@@ -74,46 +74,54 @@ async function migrateTable(sqlConnection, mongoDbCourse, tableName, mongoDbUser
         const category = await findCategory(rows, mongoDbCourse);
         const users = await findUsers(rows, mongoDbUser);
 
-        const mappedCourse = rows.map((row) => ({
-            name: row.Name,
-            authorId: users.find(item => row.CreatedBy == item.mobieduUserId)?._id || '',
-            isHidden: row.Status,
-            avatarURL: row.ThumbnailFileUrl,
-            coverImageURL: row.CoverFileUrl,
-            introVideoURL: "",
-            catalogId: category.find(item => row.IdCategory == item.oldId)?._id || '',
-            teacherId: users.find(item => row.IDTeacher == item.mobieduUserId)?._id || '',
-            teacherIds: users.find(item => row.IDTeacher == item.mobieduUserId)?._id || '',
+        const mappedCourse = rows.map((row) => {
 
-            intro: row.WelcomeCourse,
-            info: row.AboutCourse,
-            benefit: row.Benefits,
-            siteId: +NEW_SITE_ID,
-            isCommented: true,
-            totalRating: (row.Review || "")?.TotalReviews,
-            averageStar: (row.Review || "")?.TotalStars,
-            isSoftDeleted: row.IsDeleted,
-            chapters: null,
-            isRegister: true,
-            view: 10000,
-            status: row.Status == 1 ? 1 : 0,
-            createAt: row.CreatedAt,
-            updateAt: row.ModifiedAt,
-            backgroundCertificate: null,
-            companyId: -1,
-            createOn: null,
-            departmentId: null,
-            isCertification: true,
-            markingScheme: null,
-            numberChapter: null,
-            numberDocument: null,
-            numberJoin: null,
-            numberLesson: row.Price || 0,
-            requiredScore: row.SellingPrice || 0,
-            statusMarkScore: null,
-            timeEnd: row.EndDate,
-            timeStart: row.StartDate,
-        }));
+            const authorId = users.find(item => row.CreatedBy == item.mobieduUserId)?._id;
+            const teacherId = users.find(item => row.IDTeacher == item.mobieduUserId)?._id || '';
+            const cateId = category.find(item => row.IdCategory == item.oldId)?._id || '';
+
+            return {
+                name: row.Name,
+                authorId: authorId || '',
+                isHidden: row.Status,
+                avatarURL: row.ThumbnailFileUrl,
+                coverImageURL: row.CoverFileUrl,
+                introVideoURL: "",
+                catalogId: cateId,
+                teacherId: teacherId,
+                teacherIds: teacherId,
+
+                intro: row.WelcomeCourse,
+                info: row.AboutCourse,
+                benefit: row.Benefits,
+                siteId: +NEW_SITE_ID,
+                isCommented: true,
+                totalRating: (row.Review || "")?.TotalReviews,
+                averageStar: (row.Review || "")?.TotalStars,
+                isSoftDeleted: row.IsDeleted,
+                chapters: null,
+                isRegister: true,
+                view: 10000,
+                status: row.Status == 1 ? 1 : 0,
+                createAt: row.CreatedAt,
+                updateAt: row.ModifiedAt,
+                backgroundCertificate: null,
+                companyId: -1,
+                createOn: null,
+                departmentId: null,
+                isCertification: true,
+                markingScheme: null,
+                numberChapter: null,
+                numberDocument: null,
+                numberJoin: null,
+                numberLesson: row.Price || 0,
+                requiredScore: row.SellingPrice || 0,
+                statusMarkScore: null,
+                timeEnd: row.EndDate,
+                timeStart: row.StartDate,
+                OldId: row.Id
+            }
+        });
 
         // Kiểm tra nếu rows trống thì thoát khỏi vòng lặp
         if (!rows || rows.length === 0) {

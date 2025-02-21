@@ -1,6 +1,6 @@
-import mysql from "mysql2/promise";
-import { MongoClient } from "mongodb";
 import dotenv from "dotenv";
+import { MongoClient } from "mongodb";
+import mysql from "mysql2/promise";
 
 // Load biến môi trường từ .env
 dotenv.config();
@@ -10,12 +10,11 @@ const {
     MYSQL_HOST,
     MYSQL_USER,
     MYSQL_PASSWORD,
-    MONGO_DATABASE_LEVEL,
+    MYSQL_DATABASE_COURSE,
     MONGO_URL,
+    MONGO_DATABASE_COURSE,
     BATCH_SIZE,
-    NEW_SITE_ID,
     OLD_SITE_ID,
-    ID_ADMIN_SITE,
 } = process.env;
 
 // Kết nối MySQL
@@ -24,17 +23,19 @@ async function connectMySQL() {
         host: MYSQL_HOST,
         user: MYSQL_USER,
         password: MYSQL_PASSWORD,
-        database: MONGO_DATABASE_LEVEL,
+        database: MYSQL_DATABASE_COURSE,
     });
 }
 
+
 // Lấy dữ liệu theo từng batch
-async function fetchBatch(sqlConnection, tableName, offset, limit, level1OldIds) {
+async function fetchBatch(sqlConnection, tableName, offset, limit) {
     const query = `
-    SELECT * FROM ${tableName}
-    WHERE IdSite = ${parseInt(OLD_SITE_ID)}
-    AND IdParent IN (${level1OldIds.map(id => parseInt(id)).join(",")})
-    LIMIT ${parseInt(limit)} OFFSET ${parseInt(offset)}
+    SELECT * FROM ${tableName} 
+    WHERE IdSite = ${parseInt(OLD_SITE_ID)} 
+    AND IdParent IS NULL 
+    LIMIT ${parseInt(limit)} 
+    OFFSET ${parseInt(offset)}
     `;
 
     const [rows] = await sqlConnection.execute(query);
@@ -43,45 +44,37 @@ async function fetchBatch(sqlConnection, tableName, offset, limit, level1OldIds)
     return rows;
 }
 
-async function findLevel1(db) {
-    const rows = await db.collection("level-1").find().toArray();
-    return rows;
-}
-
-
 async function migrateTable(sqlConnection, mongoDb, tableName) {
     console.log(`🔄 Đang di chuyển bảng ${tableName}...`);
 
     let offset = 0;
-
-    const level1 = findLevel1()
-    const level1OldIds = level1.map(item => item.oldId)
-
-
     while (true) {
-        const rows = await fetchBatch(sqlConnection, tableName, offset, BATCH_SIZE, level1OldIds);
+        const rows = await fetchBatch(sqlConnection, tableName, offset, BATCH_SIZE);
 
         const mappedNews = rows.map((row) => {
-            const level1InDB = level1.find(item => item.oldID === row.IdParent)
             return {
+                courseId: row.IDCourse,
                 name: row.Name,
-                managerId: ID_ADMIN_SITE,
-                createdAt: null,
-                totalUser: 0,
-                level1: level1InDB?._id,
-                level1_name: level1InDB?.name,
+                order: row.DisplayOrder,
+                status: 1,
+                totalLesson: 0,
+                typeChapter: 1,
+                createAt: row.CreatedDate,
+                updateAt: row.ModifiedDate,
                 oldId: row.Id,
-                siteId: + NEW_SITE_ID
             }
+
         });
 
         // Kiểm tra nếu rows trống thì thoát khỏi vòng lặp
         if (!rows || rows.length === 0) break;
 
-        await mongoDb.collection('level-2').insertMany(mappedNews);
+        await mongoDb.collection('chapter').insertMany(mappedNews);
 
         offset += BATCH_SIZE;
     }
+
+    console.log(`🏁 Hoàn tất di chuyển bảng ${tableName}!`);
 }
 
 const sqlConnection = await connectMySQL();
@@ -90,10 +83,10 @@ const sqlConnection = await connectMySQL();
 async function migrate() {
     const mongoClient = new MongoClient(MONGO_URL);
     await mongoClient.connect();
-    const mongoDb = mongoClient.db(MONGO_DATABASE_LEVEL);
+    const mongoDb = mongoClient.db(MONGO_DATABASE_COURSE);
 
     try {
-        await migrateTable(sqlConnection, mongoDb, 'UnitManagements');
+        await migrateTable(sqlConnection, mongoDb, 'CourseLesson');
     } catch (error) {
         console.error("❌ Lỗi khi di chuyển dữ liệu:", error);
     } finally {
