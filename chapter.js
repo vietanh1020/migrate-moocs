@@ -28,6 +28,14 @@ async function connectMySQL() {
 }
 
 
+async function findCourse(records, db) {
+    if (records.length === 0) return [];
+    const ids = records.map(item => item.IdCategory);
+    const rows = await db.collection("course").find({ oldId: { $in: ids } }).toArray();
+    return rows;
+}
+
+
 // Lấy dữ liệu theo từng batch
 async function fetchBatch(sqlConnection, tableName, offset, limit) {
     const query = `
@@ -50,10 +58,11 @@ async function migrateTable(sqlConnection, mongoDb, tableName) {
     let offset = 0;
     while (true) {
         const rows = await fetchBatch(sqlConnection, tableName, offset, BATCH_SIZE);
+        const courseInMongo = await findCourse(rows)
 
         const mappedNews = rows.map((row) => {
             return {
-                courseId: row.IDCourse,
+                courseId: courseInMongo.find(item => item.oldId == row.IDCourse)?._id,
                 name: row.Name,
                 order: row.DisplayOrder,
                 status: 1,

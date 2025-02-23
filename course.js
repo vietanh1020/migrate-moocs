@@ -119,7 +119,7 @@ async function migrateTable(sqlConnection, mongoDbCourse, tableName, mongoDbUser
                 statusMarkScore: null,
                 timeEnd: row.EndDate,
                 timeStart: row.StartDate,
-                OldId: row.Id
+                oldId: row.Id
             }
         });
 
