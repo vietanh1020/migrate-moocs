@@ -11,6 +11,7 @@ const {
     MYSQL_USER,
     MYSQL_PASSWORD,
     MYSQL_DATABASE_COURSE,
+    MYSQL_DATABASE_4T,
     MONGO_URL,
     MONGO_DATABASE_COURSE,
     BATCH_SIZE,
@@ -25,6 +26,44 @@ async function connectMySQL() {
         password: MYSQL_PASSWORD,
         database: MYSQL_DATABASE_COURSE,
     });
+}
+
+async function connectDB_4T() {
+    return mysql.createConnection({
+        host: MYSQL_HOST,
+        user: MYSQL_USER,
+        password: MYSQL_PASSWORD,
+        database: MYSQL_DATABASE_4T,
+    });
+}
+
+async function findRoomTest(records) {
+    if (records.length == 0) return [];
+    const ids = [...new Set(records.map(item => item.IdExam))];
+    const query = `SELECT * FROM rooms WHERE id IN (${ids.join(",")})`;
+    const [rows] = await sqlConnection4t.execute(query);
+    return rows;
+}
+
+async function findQuestionExam(roomId) {
+    if (records.length == 0) return [];
+    const query = `SELECT * FROM exams WHERE room_id='${roomId}'`;
+    const [rows] = await sqlConnection4t.execute(query);
+    const questions = rows.map(item => {
+        return {
+            questionText: item.question.content,
+            listAnswer: item.answers.map((ans, index) => {
+                return {
+                    texAnswer: ans.content,
+                    isTrue: ans.id === item.correct,
+                    position: index,
+                }
+            }),
+            score: item.point
+        }
+    })
+
+    return questions;
 }
 
 // Lấy dữ liệu theo từng batch
@@ -80,15 +119,20 @@ async function getTypeEnd(row) {
 
 
 async function migrateTable(sqlConnection, mongoDb, tableName) {
-    const chapters = await findChapter(rows, mongoDbCourse);
     console.log(`🔄 Đang di chuyển bảng ${tableName}...`);
-
 
     let offset = 0;
     while (true) {
         const rows = await fetchBatch(sqlConnection, tableName, offset, BATCH_SIZE);
-        const mappedNews = rows.map((row) => {
+
+        const chapters = await findChapter(rows, mongoDb);
+        const RoomTestBatch = await findRoomTest(rows)
+
+        const mappedLesson = await Promise.all(rows.map(async (row) => {
+            const roomTest = RoomTestBatch.find(item => row.IdExam == item.id);
             const chapter = chapters.find(item => row.ParentId == item.oldId);
+            const questionsExam = await findQuestionExam(roomTest.exam_id) || []
+
             return {
                 chapterId: chapter?._id,
                 courseId: chapter?.courseId,
@@ -104,27 +148,27 @@ async function migrateTable(sqlConnection, mongoDb, tableName) {
                 description: row.Description || row.Content,
                 lessonFinishStatus: getTypeEnd(row),
                 percentFinish: 100,
-                questions: [], // câu hỏi
-                score: 0, // tổng điểm
+                questions: questionsExam, // câu hỏi
+                score: questionsExam.reduce((sum, item) => sum + item.score, 0), // tổng điểm
                 lessonStatus: 1,
                 order: row.DisplayOrder,
                 testId: null,
                 duration: 0,
                 thumbnailUrl: row.ThumbnailFileUrl,
                 numberQuestionPass: 0, //làm đúng bao nhêu câu
-                markPassExam: 0, //điểm  pass bài
+                markPassExam: 0, //điểm pass bài
                 createAt: row.CreatedDate,
                 updateAt: row.ModifiedDate,
-
                 oldId: row.oldId,
                 oldIdExam: row.IdExam,
             }
-        });
+        }));
+
 
         // Kiểm tra nếu rows trống thì thoát khỏi vòng lặp
         if (!rows || rows.length === 0) break;
 
-        await mongoDb.collection('lesson').insertMany(mappedNews);
+        await mongoDb.collection('lesson').insertMany(mappedLesson);
 
         offset += BATCH_SIZE;
     }
@@ -133,6 +177,7 @@ async function migrateTable(sqlConnection, mongoDb, tableName) {
 }
 
 const sqlConnection = await connectMySQL();
+const sqlConnection4t = await connectDB_4T()
 
 // Chạy quá trình di chuyển
 async function migrate() {

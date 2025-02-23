@@ -15,7 +15,7 @@ const {
     MONGO_DATABASE_ADMIN,
     BATCH_SIZE,
     NEW_SITE_ID,
-    MYSQL_DATABASE_ROLE,
+    MYSQL_DATABASE_4T,
     OLD_SITE_ID,
 } = process.env;
 
@@ -35,7 +35,7 @@ async function connectTableRole() {
         host: MYSQL_HOST,
         user: MYSQL_USER,
         password: MYSQL_PASSWORD,
-        database: MYSQL_DATABASE_ROLE,
+        database: MYSQL_DATABASE_4T,
     });
 }
 
