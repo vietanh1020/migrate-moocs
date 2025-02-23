@@ -156,7 +156,7 @@ async function migrateTable(sqlConnection, mongoDb, tableName) {
                 duration: 0,
                 thumbnailUrl: row.ThumbnailFileUrl,
                 numberQuestionPass: 0, //làm đúng bao nhêu câu
-                markPassExam: 0, //điểm pass bài
+                markPassExam: roomTest?.pass_point || 0, //điểm pass bài
                 createAt: row.CreatedDate,
                 updateAt: row.ModifiedDate,
                 oldId: row.oldId,
