@@ -52,3 +52,5 @@ SOURCE /tmp/exams_4t.sql;
 CREATE DATABASE mobiedu_exam_4t CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 docker cp C:\Users\anh.voviet\Desktop\backup\Course_new.sql df40b1975f56:/tmp/Course_new.sql
+
+docker cp C:\Users\anh.voviet\Desktop\db\mschool_front_end.sql df40b1975f56:/tmp/mschool_front_end.sql

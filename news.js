@@ -1,6 +1,7 @@
 import mysql from "mysql2/promise";
-import { MongoClient } from "mongodb";
+import { MongoClient, ObjectId } from "mongodb";
 import dotenv from "dotenv";
+import moment from "moment";
 
 // Load biến môi trường từ .env
 dotenv.config();
@@ -27,8 +28,30 @@ async function connectMySQL() {
         database: MYSQL_DATABASE_NEWS,
     });
 }
+
+
+async function InsertCateDefault(mongoDb) {
+    const collection = mongoDb.collection('category'); // Replace with your actual collection name
+
+    const defaultCategory = {
+        _id: new ObjectId(),
+        title: "Default",
+        description: "description",
+        siteId: +NEW_SITE_ID,
+        domainSite: null,
+        createdAt: moment().unix() // Convert from Unix timestamp to Date
+    };
+
+    await collection.insertOne(defaultCategory);
+
+    return defaultCategory;
+
+}
 // Lấy dữ liệu theo từng batch
 async function fetchBatch(sqlConnection, tableName, offset, limit) {
+
+
+
     const query = `SELECT * FROM ${tableName} WHERE IdSite=${parseInt(OLD_SITE_ID)} LIMIT ${parseInt(limit)} OFFSET ${parseInt(offset)}`;
     const [rows] = await sqlConnection.execute(query);
 
@@ -38,6 +61,9 @@ async function fetchBatch(sqlConnection, tableName, offset, limit) {
 
 async function migrateTable(sqlConnection, mongoDb, tableName) {
     console.log(`🔄 Đang di chuyển bảng ${tableName}...`);
+
+
+    const defaultValue = await InsertCateDefault(mongoDb);
 
     let offset = 0;
     while (true) {
@@ -50,8 +76,11 @@ async function migrateTable(sqlConnection, mongoDb, tableName) {
             short_description: row.Description,
             description: row.HtmlContent.replaceAll("https://cdn4t.mobiedu.vn", "https://media-moocs.mobifone.vn"),
             status: row.ApproveStatus,
-            createdAt: row.CreatedAt,
-            category: null,
+            createdAt: moment(row.CreatedAt).unix(),
+            category: {
+                _id: defaultValue._id.toString(),
+                title: defaultValue.title
+            },
             siteId: +NEW_SITE_ID,
             view_count: row.ViewCounter,
             view_fake: 0,
