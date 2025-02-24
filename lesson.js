@@ -1,4 +1,5 @@
 import dotenv from "dotenv";
+import moment from "moment";
 import { MongoClient } from "mongodb";
 import mysql from "mysql2/promise";
 
@@ -15,6 +16,7 @@ const {
     MONGO_URL,
     MONGO_DATABASE_COURSE,
     BATCH_SIZE,
+    NEW_SITE_ID,
     OLD_SITE_ID,
 } = process.env;
 
@@ -39,13 +41,17 @@ async function connectDB_4T() {
 
 async function findRoomTest(records) {
     if (records.length == 0) return [];
-    const ids = [...new Set(records.map(item => item.IdExam))];
-    const query = `SELECT * FROM rooms WHERE id IN (${ids.join(",")})`;
+    const ids = [...new Set(records.map(item => item.IdExam))].filter(item => !!item);
+    const formattedIds = ids.map(id => `'${id}'`).join(",");
+
+    const query = `SELECT * FROM rooms WHERE id IN (${formattedIds})`;
     const [rows] = await sqlConnection4t.execute(query);
     return rows;
 }
 
 async function findQuestionExam(roomId) {
+    if (!roomId) return;
+
     if (records.length == 0) return [];
     const query = `SELECT * FROM exams WHERE room_id='${roomId}'`;
     const [rows] = await sqlConnection4t.execute(query);
@@ -67,10 +73,10 @@ async function findQuestionExam(roomId) {
 }
 
 // Lấy dữ liệu theo từng batch
-async function fetchBatch(sqlConnection, tableName, offset, limit) {
+async function fetchBatch(sqlConnection, tableName, offset, limit, courseOldId) {
     const query = `
     SELECT * FROM ${tableName} 
-    WHERE IdSite = ${parseInt(OLD_SITE_ID)} 
+    WHERE IDCourse IN (${courseOldId.map(id => parseInt(id)).join(",")})
     AND IdParent IS NOT NULL 
     LIMIT ${parseInt(limit)} 
     OFFSET ${parseInt(offset)}
@@ -83,21 +89,21 @@ async function fetchBatch(sqlConnection, tableName, offset, limit) {
 }
 
 async function findChapter(records, db) {
-    if (records.length === 0) return [];
-    const ids = [...new Set(records.map(item => item.oldId))];
-    const rows = await db.collection("chapter").find({ oldId: { $in: ids } }).toArray();
+    const ids = [...new Set(records.map(item => item._id.toString()))];
+    const rows = await db.collection("chapter").find({ courseId: { $in: ids } }).toArray();
     return rows;
 }
 
 
-async function getType(row) {
+function getType(row) {
 
     if (row.VideoFileType == "Video") return 0;
-    if (row.VideoFileType == "Youtube") return 1
+    if (row.VideoFileType == "Youtube") return 1;
     if (row.Name == "File ghi hình trực tuyến") return 3;
     if (row.Name == "File text") return 4;
     if (row.Name == "Test" && row.ExamType == 'room') return 5;
 
+    return 0;
 
     // [Description("Dạng Video")] VIDEO = 0,
     // [Description("Dạng Youtube")] YOUTUBE = 1,
@@ -109,7 +115,7 @@ async function getType(row) {
 }
 
 
-async function getTypeEnd(row) {
+function getTypeEnd(row) {
     if (row.VideoFileType == "Video" || row.VideoFileType == "Youtube") return 0;
     if (row.Name == "Bài kiểm tra") return 1
     if (row.Name == "Test" && row.ExamType == 'room') return 1;
@@ -117,31 +123,49 @@ async function getTypeEnd(row) {
     return 2
 }
 
+async function findCourseBySite(db) {
+    const rows = await db.collection("course").find({ siteId: +NEW_SITE_ID }).toArray();
+    return rows;
+}
+
+
 
 async function migrateTable(sqlConnection, mongoDb, tableName) {
     console.log(`🔄 Đang di chuyển bảng ${tableName}...`);
 
+
+    const courseInMongo = await findCourseBySite(mongoDb)
+
+    const courseOldId = courseInMongo.map(item => item.oldId)
+
+    const chapters = await findChapter(courseInMongo, mongoDb);
     let offset = 0;
     while (true) {
-        const rows = await fetchBatch(sqlConnection, tableName, offset, BATCH_SIZE);
+        const rows = await fetchBatch(sqlConnection, tableName, offset, BATCH_SIZE, courseOldId);
 
-        const chapters = await findChapter(rows, mongoDb);
         const RoomTestBatch = await findRoomTest(rows)
 
-        const mappedLesson = await Promise.all(rows.map(async (row) => {
-            const roomTest = RoomTestBatch.find(item => row.IdExam == item.id);
-            const chapter = chapters.find(item => row.ParentId == item.oldId);
-            const questionsExam = await findQuestionExam(roomTest.exam_id) || []
+        const mappedLesson = [];
 
-            return {
-                chapterId: chapter?._id,
-                courseId: chapter?.courseId,
+
+
+
+        for (const row of rows) {
+            const roomTest = RoomTestBatch.find(item => row.IdExam == item.id);
+
+            const chapter = chapters.find(item => row.IDParent == item.oldId);
+
+            const questionsExam = await findQuestionExam(roomTest?.exam_id) || [];
+
+            mappedLesson.push({
+                chapterId: chapter?._id.toString(),
+                courseId: chapter?.courseId.toString(),
                 name: row.Name,
                 lessonType: getType(row),
                 urlLessonType: row.VideoFileUrl,
                 uriVideo: row.VideoFileUrl,
-                urlFileAttended: JSON.stringify(row.FileUrls),
-                fileAttendedName: JSON.stringify(row.FileUrls),
+                urlFileAttended: row.FileUrls ? JSON.stringify(row.FileUrls) : null,
+                fileAttendedName: row.FileUrls ? JSON.stringify(row.FileUrls) : null,
                 tag: [],
                 status: 1,
                 urlAvatar: "",
@@ -151,18 +175,18 @@ async function migrateTable(sqlConnection, mongoDb, tableName) {
                 questions: questionsExam, // câu hỏi
                 score: questionsExam.reduce((sum, item) => sum + item.score, 0), // tổng điểm
                 lessonStatus: 1,
-                order: row.DisplayOrder,
+                order: +row.DisplayOrder,
                 testId: null,
                 duration: 0,
                 thumbnailUrl: row.ThumbnailFileUrl,
-                numberQuestionPass: 0, //làm đúng bao nhêu câu
-                markPassExam: roomTest?.pass_point || 0, //điểm pass bài
-                createAt: row.CreatedDate,
-                updateAt: row.ModifiedDate,
+                numberQuestionPass: 0, //làm đúng bao nhiêu câu
+                markPassExam: +roomTest?.pass_point || 0, // điểm pass bài
+                createAt: moment(row.CreatedDate).unix(),
+                updateAt: moment(row.ModifiedDate).unix(),
                 oldId: row.oldId,
                 oldIdExam: row.IdExam,
-            }
-        }));
+            });
+        }
 
 
         // Kiểm tra nếu rows trống thì thoát khỏi vòng lặp
@@ -170,7 +194,7 @@ async function migrateTable(sqlConnection, mongoDb, tableName) {
 
         await mongoDb.collection('lesson').insertMany(mappedLesson);
 
-        offset += BATCH_SIZE;
+        offset += +BATCH_SIZE;
     }
 
     console.log(`🏁 Hoàn tất di chuyển bảng ${tableName}!`);

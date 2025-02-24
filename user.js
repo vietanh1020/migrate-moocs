@@ -12,7 +12,8 @@ const {
     MYSQL_PASSWORD,
     MYSQL_DATABASE_AUTH,
     MONGO_URL,
-    MONGO_DATABASE_ADMIN,
+    MONGO_DATABASE_LEVEL,
+    MONGO_DATABASE_USER,
     BATCH_SIZE,
     NEW_SITE_ID,
     MYSQL_DATABASE_4T,
@@ -39,6 +40,13 @@ async function connectTableRole() {
     });
 }
 
+function getRoleName(role) {
+    if (role == "owner") return "ADMIN";
+    if (role == "admin") return "ADMIN"
+    if (role == "teacher") return "TEACHER"
+    return "STUDENT"
+}
+
 // Lấy dữ liệu theo từng batch
 async function fetchBatch(sqlConnection, tableName, offset, limit) {
     const query = `SELECT * FROM ${tableName} WHERE IdSite=${OLD_SITE_ID} LIMIT ${parseInt(limit)} OFFSET ${parseInt(offset)}`;
@@ -56,7 +64,14 @@ async function findRole(records) {
     return rows;
 }
 
-async function migrateTable(sqlConnection, mongoDb, tableName) {
+// async function findManagerLevel(mongoDbLevel, records, level) {
+//     if (records.length === 0) return [];
+//     const ids = [...new Set(records.map(item => item.oldId))];
+//     const rows = await mongoDbLevel.collection(level).find({ oldId: { $in: ids } }).toArray();
+//     return rows;
+// }
+
+async function migrateTable(sqlConnection, mongoDb, tableName, mongoDbLevel) {
     console.log(`🔄 Đang di chuyển bảng ${tableName}...`);
 
     let offset = 0;
@@ -64,6 +79,9 @@ async function migrateTable(sqlConnection, mongoDb, tableName) {
         const rows = await fetchBatch(sqlConnection, tableName, offset, BATCH_SIZE);
 
         const roles = await findRole(rows);
+        // const managerLevel1 = await findManagerLevel(mongoDbLevel, rows, 'level-1');
+        // const managerLevel2 = await findManagerLevel(mongoDbLevel, rows, 'level-2');
+        // const managerLevel3 = await findManagerLevel(mongoDbLevel, rows, 'level-3');
 
         const mappedUsers = rows.map((row) => ({
             accessFailedCount: 0,
@@ -79,6 +97,11 @@ async function migrateTable(sqlConnection, mongoDb, tableName) {
             siteId: +NEW_SITE_ID,
             positionId: "",
             infoManagementLevel: null,
+            //  {
+            //     managerLevel1Id: managerLevel1.find(item => item.oldId == row.IdProvince)?._id,
+            //     managerLevel2Id: managerLevel2.find(item => item.oldId == row.IdDistrict)?._id,
+            //     managerLevel3Id: managerLevel3.find(item => item.oldId == row.IdWard)?._id,
+            // },
             isLockoutEnabled: row.IsBlocked == 0 ? true : false,
             lockoutEndDate: null,
             passwordHash: row.Pwd,
@@ -91,7 +114,7 @@ async function migrateTable(sqlConnection, mongoDb, tableName) {
             mobieduUserId: row.Id,
             listRoles: null,
             listPolicy: null,
-            role: roles.find(item => item.mobiedu_user_id == row.Id)?.role == "student" ? "STUDENT" : "ADMIN",
+            role: getRoleName(roles.find(item => item.mobiedu_user_id == row.Id)?.role),
             functionsTree: null,
         }));
 
@@ -102,7 +125,7 @@ async function migrateTable(sqlConnection, mongoDb, tableName) {
 
         await mongoDb.collection('user').insertMany(mappedUsers);
 
-        offset += BATCH_SIZE;
+        offset += +BATCH_SIZE;
     }
 
     console.log(`🏁 Hoàn tất di chuyển bảng ${tableName}!`);
@@ -115,10 +138,12 @@ const sqlConnection = await connectMySQL();
 async function migrate() {
     const mongoClient = new MongoClient(MONGO_URL);
     await mongoClient.connect();
-    const mongoDb = mongoClient.db(MONGO_DATABASE_ADMIN);
+    const mongoDb = mongoClient.db(MONGO_DATABASE_USER);
+    const mongoDbLevel = mongoClient.db(MONGO_DATABASE_LEVEL);
+
 
     try {
-        await migrateTable(sqlConnection, mongoDb, 'Users');
+        await migrateTable(sqlConnection, mongoDb, 'Users', mongoDbLevel);
     } catch (error) {
         console.error("❌ Lỗi khi di chuyển dữ liệu:", error);
     } finally {

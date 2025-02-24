@@ -89,7 +89,7 @@ async function migrateTable(sqlConnection, mongoDb, tableName) {
 
         await mongoDb.collection('courseCatalog').insertMany(resultCata);
 
-        offset += BATCH_SIZE;
+        offset += +BATCH_SIZE;
     }
 
     console.log(`🏁 Hoàn tất di chuyển bảng ${tableName}!`);

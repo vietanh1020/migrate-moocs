@@ -1,7 +1,7 @@
 import mysql from "mysql2/promise";
 import { MongoClient } from "mongodb";
 import dotenv from "dotenv";
-
+import moment from "moment";
 // Load biến môi trường từ .env
 dotenv.config();
 
@@ -16,7 +16,7 @@ const {
     NEW_SITE_ID,
     OLD_SITE_ID,
     MONGO_DATABASE_COURSE,
-    MONGO_DATABASE_ADMIN
+    MONGO_DATABASE_USER
 } = process.env;
 
 
@@ -76,20 +76,20 @@ async function migrateTable(sqlConnection, mongoDbCourse, tableName, mongoDbUser
 
         const mappedCourse = rows.map((row) => {
 
-            const authorId = users.find(item => row.CreatedBy == item.mobieduUserId)?._id;
+            const authorId = users.find(item => row.CreatedBy == item.mobieduUserId)?._id || '';
             const teacherId = users.find(item => row.IDTeacher == item.mobieduUserId)?._id || '';
             const cateId = category.find(item => row.IdCategory == item.oldId)?._id || '';
 
             return {
                 name: row.Name,
-                authorId: authorId || '',
-                isHidden: row.Status,
+                authorId: '',  //authorId.toString()
+                isHidden: 0,
                 avatarURL: row.ThumbnailFileUrl,
                 coverImageURL: row.CoverFileUrl,
                 introVideoURL: "",
-                catalogId: cateId,
-                teacherId: teacherId,
-                teacherIds: teacherId,
+                catalogId: cateId.toString(),
+                teacherId: "",//teacherId.toString()
+                teacherIds: [""],
 
                 intro: row.WelcomeCourse,
                 info: row.AboutCourse,
@@ -100,25 +100,18 @@ async function migrateTable(sqlConnection, mongoDbCourse, tableName, mongoDbUser
                 averageStar: (row.Review || "")?.TotalStars,
                 isSoftDeleted: row.IsDeleted,
                 chapters: null,
-                isRegister: true,
+                isRegister: row.IsOpenCourse == 1 ? 0 : 1,
                 view: 10000,
                 status: row.Status == 1 ? 1 : 0,
-                createAt: row.CreatedAt,
-                updateAt: row.ModifiedAt,
+                createAt: moment(row.CreatedAt).unix(),
+                updateAt: moment(row.ModifiedAt).unix(),
                 backgroundCertificate: null,
                 companyId: -1,
-                createOn: null,
-                departmentId: null,
+                createOn: moment().unix(),
                 isCertification: true,
-                markingScheme: null,
-                numberChapter: null,
-                numberDocument: null,
-                numberJoin: null,
-                numberLesson: row.Price || 0,
-                requiredScore: row.SellingPrice || 0,
-                statusMarkScore: null,
-                timeEnd: row.EndDate,
-                timeStart: row.StartDate,
+                numberLesson: +row.Price || 0,
+                requiredScore: +row.SellingPrice || 0,
+                // statusMarkScore: null,
                 oldId: row.Id
             }
         });
@@ -130,7 +123,7 @@ async function migrateTable(sqlConnection, mongoDbCourse, tableName, mongoDbUser
 
         await mongoDbCourse.collection('course').insertMany(mappedCourse);
 
-        offset += BATCH_SIZE;
+        offset += +BATCH_SIZE;
     }
 
     console.log(`🏁 Hoàn tất di chuyển bảng ${tableName}!`);
@@ -143,7 +136,7 @@ async function migrate() {
     const mongoClient = new MongoClient(MONGO_URL);
     await mongoClient.connect();
     const mongoDbCourse = mongoClient.db(MONGO_DATABASE_COURSE);
-    const mongoDbUser = mongoClient.db(MONGO_DATABASE_ADMIN);
+    const mongoDbUser = mongoClient.db(MONGO_DATABASE_USER);
 
 
     try {

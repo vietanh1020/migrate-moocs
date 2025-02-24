@@ -63,7 +63,7 @@ async function migrateTable(sqlConnection, mongoDb, tableName) {
 
         await mongoDb.collection('news').insertMany(mappedNews);
 
-        offset += BATCH_SIZE;
+        offset += +BATCH_SIZE;
     }
 
     console.log(`🏁 Hoàn tất di chuyển bảng ${tableName}!`);

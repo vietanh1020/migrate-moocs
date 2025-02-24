@@ -14,7 +14,7 @@ const {
     MONGO_URL,
     MONGO_DATABASE_COURSE,
     BATCH_SIZE,
-    OLD_SITE_ID,
+    NEW_SITE_ID,
 } = process.env;
 
 // Kết nối MySQL
@@ -28,19 +28,17 @@ async function connectMySQL() {
 }
 
 
-async function findCourse(records, db) {
-    if (records.length === 0) return [];
-    const ids = records.map(item => item.IdCategory);
-    const rows = await db.collection("course").find({ oldId: { $in: ids } }).toArray();
+async function findCourseBySite(db) {
+    const rows = await db.collection("course").find({ siteId: +NEW_SITE_ID }).toArray();
     return rows;
 }
 
 
 // Lấy dữ liệu theo từng batch
-async function fetchBatch(sqlConnection, tableName, offset, limit) {
+async function fetchBatch(sqlConnection, tableName, offset, limit, courseOldId) {
     const query = `
     SELECT * FROM ${tableName} 
-    WHERE IdSite = ${parseInt(OLD_SITE_ID)} 
+    WHERE IDCourse IN (${courseOldId.map(id => parseInt(id)).join(",")})
     AND IdParent IS NULL 
     LIMIT ${parseInt(limit)} 
     OFFSET ${parseInt(offset)}
@@ -55,14 +53,18 @@ async function fetchBatch(sqlConnection, tableName, offset, limit) {
 async function migrateTable(sqlConnection, mongoDb, tableName) {
     console.log(`🔄 Đang di chuyển bảng ${tableName}...`);
 
+
+    const courseInMongo = await findCourseBySite(mongoDb)
+
+    const courseOldId = courseInMongo.map(item => item.oldId)
+
     let offset = 0;
     while (true) {
-        const rows = await fetchBatch(sqlConnection, tableName, offset, BATCH_SIZE);
-        const courseInMongo = await findCourse(rows)
+        const rows = await fetchBatch(sqlConnection, tableName, offset, BATCH_SIZE, courseOldId);
 
         const mappedNews = rows.map((row) => {
             return {
-                courseId: courseInMongo.find(item => item.oldId == row.IDCourse)?._id,
+                courseId: courseInMongo.find(item => item.oldId == row.IDCourse)?._id.toString(),
                 name: row.Name,
                 order: row.DisplayOrder,
                 status: 1,
@@ -80,7 +82,7 @@ async function migrateTable(sqlConnection, mongoDb, tableName) {
 
         await mongoDb.collection('chapter').insertMany(mappedNews);
 
-        offset += BATCH_SIZE;
+        offset += +BATCH_SIZE;
     }
 
     console.log(`🏁 Hoàn tất di chuyển bảng ${tableName}!`);

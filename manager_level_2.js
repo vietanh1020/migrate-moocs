@@ -10,6 +10,7 @@ const {
     MYSQL_HOST,
     MYSQL_USER,
     MYSQL_PASSWORD,
+    MYSQL_DATABASE_LEVEL,
     MONGO_DATABASE_LEVEL,
     MONGO_URL,
     BATCH_SIZE,
@@ -24,7 +25,7 @@ async function connectMySQL() {
         host: MYSQL_HOST,
         user: MYSQL_USER,
         password: MYSQL_PASSWORD,
-        database: MONGO_DATABASE_LEVEL,
+        database: MYSQL_DATABASE_LEVEL,
     });
 }
 
@@ -80,7 +81,7 @@ async function migrateTable(sqlConnection, mongoDb, tableName) {
 
         await mongoDb.collection('level-2').insertMany(mappedNews);
 
-        offset += BATCH_SIZE;
+        offset += +BATCH_SIZE;
     }
 }
 
