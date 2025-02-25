@@ -49,9 +49,6 @@ async function InsertCateDefault(mongoDb) {
 }
 // Lấy dữ liệu theo từng batch
 async function fetchBatch(sqlConnection, tableName, offset, limit) {
-
-
-
     const query = `SELECT * FROM ${tableName} WHERE IdSite=${parseInt(OLD_SITE_ID)} LIMIT ${parseInt(limit)} OFFSET ${parseInt(offset)}`;
     const [rows] = await sqlConnection.execute(query);
 

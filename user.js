@@ -87,7 +87,7 @@ async function migrateTable(sqlConnection, mongoDb, tableName, mongoDbLevel) {
             accessFailedCount: 0,
             address: "",
             avatar: row.AvatarUrl ? row.AvatarUrl.replace("https://cdn4t.mobiedu.vn", "https://media-moocs.mobifone.vn") : "",
-            birthday: new Date(row.Birthday),
+            birthday: row.Birthday,
             dateLogin: row.LastLoginDate,
             deletedOn: null,
             email: row.Email || "",
