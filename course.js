@@ -1,5 +1,5 @@
 import mysql from "mysql2/promise";
-import { MongoClient } from "mongodb";
+import { MongoClient, ObjectId } from "mongodb";
 import dotenv from "dotenv";
 import moment from "moment";
 // Load biến môi trường từ .env
@@ -16,7 +16,8 @@ const {
     NEW_SITE_ID,
     OLD_SITE_ID,
     MONGO_DATABASE_COURSE,
-    MONGO_DATABASE_USER
+    MONGO_DATABASE_USER,
+    MYSQL_DATABASE_AUTH
 } = process.env;
 
 
@@ -29,6 +30,16 @@ async function connectMySQL() {
         database: MYSQL_DATABASE_COURSE,
     });
 }
+
+async function connectMySQLUser() {
+    return mysql.createConnection({
+        host: MYSQL_HOST,
+        user: MYSQL_USER,
+        password: MYSQL_PASSWORD,
+        database: MYSQL_DATABASE_AUTH,
+    });
+}
+
 
 // Lấy dữ liệu theo từng batch
 async function fetchBatch(sqlConnection, tableName, offset, limit) {
@@ -46,25 +57,63 @@ async function findCategory(records, db) {
     return rows;
 }
 
-async function findUsers(records, mongoDbUser) {
-    if (records.length === 0) return [];
 
-    const userIds = [];
 
-    records.forEach(element => {
-        if (element?.IDTeacher) userIds.push(element?.IDTeacher)
-        if (element?.CreatedBy) userIds.push(element?.CreatedBy)
-    });
+async function CreateOrFindTeacher(teacherIds, mongoDbCourse, sqlConnectionUser) {
+    if (!Array.isArray(teacherIds)) {
+        teacherIds = [teacherIds];
+    }
 
-    console.log({ userIds });
+    const teacherObjectIds = [];
 
-    const rows = await mongoDbUser.collection("user").find({ mobieduUserId: { $in: userIds } }).toArray();
+    for (const teacherId of teacherIds) {
+        if (!teacherId) continue;
 
-    console.log({ rows });
-    return rows;
+
+
+
+        let teacher = await mongoDbCourse.collection('teachers').findOne({ oldId: teacherId, siteId: +NEW_SITE_ID });
+
+        if (!teacher) {
+
+
+            const query = `SELECT * FROM Users WHERE Id=${teacherId}`;
+            const [rows] = await sqlConnectionUser.execute(query);
+            const user = rows[0];
+
+            if (!user) {
+                console.warn(`Teacher with ID ${teacherId} not found in SQL DB`);
+                continue;
+            }
+
+            const newTeacher = {
+                _id: new ObjectId(),
+                avatar: user.AvatarUrl,
+                fullName: user.FullName,
+                email: user.Email,
+                phone: user.Phone,
+                personal: "",
+                linkYoutube: "",
+                linkFb: "",
+                description: "",
+                siteId: +NEW_SITE_ID,
+                oldId: teacherId,
+                createdAt: moment().unix()
+            };
+
+            const result = await mongoDbCourse.collection('teachers').insertOne(newTeacher);
+            teacher = newTeacher;
+        }
+
+        teacherObjectIds.push(teacher._id.toString());
+    }
+
+    return teacherObjectIds;
 }
 
-async function migrateTable(sqlConnection, mongoDbCourse, tableName, mongoDbUser) {
+
+
+async function migrateTable(sqlConnection, mongoDbCourse, tableName, sqlConnectionUser) {
     console.log(`🔄 Đang di chuyển bảng ${tableName}...`);
 
     let offset = 0;
@@ -72,32 +121,31 @@ async function migrateTable(sqlConnection, mongoDbCourse, tableName, mongoDbUser
         const rows = await fetchBatch(sqlConnection, tableName, offset, BATCH_SIZE);
 
         const category = await findCategory(rows, mongoDbCourse);
-        const users = await findUsers(rows, mongoDbUser);
 
-        const mappedCourse = rows.map((row) => {
+        const mappedCourse = [];
 
-            const authorId = users.find(item => row.CreatedBy == item.mobieduUserId)?._id || '';
-            const teacherId = users.find(item => row.IDTeacher == item.mobieduUserId)?._id || '';
-            const cateId = category.find(item => row.IdCategory == item.oldId)?._id || '';
+        for (const row of rows) {
+            const categoryItem = category.find(item => row.IdCategory == item.oldId);
+            const cateId = categoryItem ? categoryItem._id.toString() : '';
 
-            return {
+            mappedCourse.push({
                 name: row.Name,
-                authorId: '',  //authorId.toString()
+                authorId: '', // authorId.toString()
                 isHidden: 0,
                 avatarURL: row.ThumbnailFileUrl,
                 coverImageURL: row.CoverFileUrl,
                 introVideoURL: "",
-                catalogId: cateId.toString(),
-                teacherId: "",//teacherId.toString()
-                teacherIds: [""],
+                catalogId: cateId,
+                teacherId: "", // teacherId.toString()
+                teacherIds: await CreateOrFindTeacher([...new Set([row.IDTeacher, row.IDCoTeacher].filter(Boolean))], mongoDbCourse, sqlConnectionUser),
 
                 intro: row.WelcomeCourse,
                 info: row.AboutCourse,
                 benefit: row.Benefits,
                 siteId: +NEW_SITE_ID,
                 isCommented: true,
-                totalRating: (row.Review || "")?.TotalReviews,
-                averageStar: (row.Review || "")?.TotalStars,
+                totalRating: (row.Review || "").TotalReviews,
+                averageStar: (row.Review || "").TotalStars,
                 isSoftDeleted: row.IsDeleted,
                 chapters: null,
                 isRegister: row.IsOpenCourse == 1 ? 0 : 1,
@@ -111,10 +159,9 @@ async function migrateTable(sqlConnection, mongoDbCourse, tableName, mongoDbUser
                 isCertification: true,
                 numberLesson: +row.Price || 0,
                 requiredScore: +row.SellingPrice || 0,
-                // statusMarkScore: null,
                 oldId: row.Id
-            }
-        });
+            });
+        }
 
         // Kiểm tra nếu rows trống thì thoát khỏi vòng lặp
         if (!rows || rows.length === 0) {
@@ -130,17 +177,15 @@ async function migrateTable(sqlConnection, mongoDbCourse, tableName, mongoDbUser
 }
 
 const sqlConnection = await connectMySQL();
-
+const sqlConnectionUser = await connectMySQLUser();
 // Chạy quá trình di chuyển
 async function migrate() {
     const mongoClient = new MongoClient(MONGO_URL);
     await mongoClient.connect();
     const mongoDbCourse = mongoClient.db(MONGO_DATABASE_COURSE);
-    const mongoDbUser = mongoClient.db(MONGO_DATABASE_USER);
-
 
     try {
-        await migrateTable(sqlConnection, mongoDbCourse, 'Courses', mongoDbUser);
+        await migrateTable(sqlConnection, mongoDbCourse, 'Courses', sqlConnectionUser);
     } catch (error) {
         console.error("❌ Lỗi khi di chuyển dữ liệu:", error);
     } finally {

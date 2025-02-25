@@ -51,8 +51,6 @@ async function migrateTable(sqlConnection, mongoDb, tableName) {
 
     console.log(`🔄 Đang di chuyển bảng ${tableName}...`);
 
-
-
     let offset = 0;
     while (true) {
         const rows = await fetchBatch(sqlConnection, tableName, offset, countRecord);
