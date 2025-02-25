@@ -4,10 +4,6 @@ B1: Sửa .env
 
 B2: chạy lần lượt các script
 
-# Tin tức
-
-1. node news.js;
-
 # Đơn vị
 
 2. node manager_level_1.js
@@ -33,6 +29,12 @@ B2: chạy lần lượt các script
 # Bài học
 
 9. node lesson.js
+
+# Tin tức
+
+1. node news.js;
+
+# SCRIPT docker
 
 docker cp C:\Users\anh.voviet\Desktop\backup\Course_Categories.sql df40b1975f56:/Course_Categories.sql
 

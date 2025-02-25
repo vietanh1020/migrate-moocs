@@ -56,6 +56,14 @@ async function fetchBatch(sqlConnection, tableName, offset, limit) {
     return rows;
 }
 
+
+async function fetchManagerLevel(sqlConnection, IdUser) {
+    const query = `SELECT * FROM UsersInUnitManagements WHERE IdUser=${IdUser}`;
+    const [rows] = await sqlConnection.execute(query);
+
+    return rows.map(item => item.IdUnit);
+}
+
 async function findRole(records) {
     if (records.length == 0) return [];
     const ids = records.map(item => item.Id)
@@ -64,59 +72,75 @@ async function findRole(records) {
     return rows;
 }
 
-// async function findManagerLevel(mongoDbLevel, records, level) {
-//     if (records.length === 0) return [];
-//     const ids = [...new Set(records.map(item => item.oldId))];
-//     const rows = await mongoDbLevel.collection(level).find({ oldId: { $in: ids } }).toArray();
-//     return rows;
-// }
+async function findManagerLevel(mongoDbLevel, level) {
+    const rows = await mongoDbLevel.collection(level).find({ siteId: + NEW_SITE_ID }).toArray();
+    return rows;
+}
+
+async function deleteOldUsers(db) {
+    await db.collection('user').deleteMany({
+        siteId: +NEW_SITE_ID,
+        mobieduUserId: { $ne: null }  // Ensures oldId is not null
+    });
+}
 
 async function migrateTable(sqlConnection, mongoDb, tableName, mongoDbLevel) {
+    console.log(`🔄 Đang xóa user MIGRATE cũ...`);
+    await deleteOldUsers(mongoDb)
+
     console.log(`🔄 Đang di chuyển bảng ${tableName}...`);
+
+    const managerLevel1 = await findManagerLevel(mongoDbLevel, 'level-1');
+    const managerLevel2 = await findManagerLevel(mongoDbLevel, 'level-2');
+    const managerLevel3 = await findManagerLevel(mongoDbLevel, 'level-3');
 
     let offset = 0;
     while (true) {
         const rows = await fetchBatch(sqlConnection, tableName, offset, BATCH_SIZE);
 
         const roles = await findRole(rows);
-        // const managerLevel1 = await findManagerLevel(mongoDbLevel, rows, 'level-1');
-        // const managerLevel2 = await findManagerLevel(mongoDbLevel, rows, 'level-2');
-        // const managerLevel3 = await findManagerLevel(mongoDbLevel, rows, 'level-3');
 
-        const mappedUsers = rows.map((row) => ({
-            accessFailedCount: 0,
-            address: "",
-            avatar: row.AvatarUrl ? row.AvatarUrl.replace("https://cdn4t.mobiedu.vn", "https://media-moocs.mobifone.vn") : "",
-            birthday: row.Birthday,
-            dateLogin: row.LastLoginDate,
-            deletedOn: null,
-            email: row.Email || "",
-            fullname: row.FullName,
-            gender: row.IdGender || 0,
-            exploreField: 1,
-            siteId: +NEW_SITE_ID,
-            positionId: "",
-            infoManagementLevel: null,
-            //  {
-            //     managerLevel1Id: managerLevel1.find(item => item.oldId == row.IdProvince)?._id,
-            //     managerLevel2Id: managerLevel2.find(item => item.oldId == row.IdDistrict)?._id,
-            //     managerLevel3Id: managerLevel3.find(item => item.oldId == row.IdWard)?._id,
-            // },
-            isLockoutEnabled: row.IsBlocked == 0 ? true : false,
-            lockoutEndDate: null,
-            passwordHash: row.Pwd,
-            phone: row.Phone || "",
-            pwd: "Migrate@2025",
-            securityStamp: "",
-            status: 1,
-            timeUpdate: null,
-            userName: row.Email,
-            mobieduUserId: row.Id,
-            listRoles: null,
-            listPolicy: null,
-            role: getRoleName(roles.find(item => item.mobiedu_user_id == row.Id)?.role),
-            functionsTree: null,
-        }));
+        const mappedUsers = [];
+
+        for (const row of rows) {
+
+            // const managerLevel = await fetchManagerLevel(sqlConnection, row.Id)
+
+            mappedUsers.push({
+                accessFailedCount: 0,
+                address: "",
+                avatar: row.AvatarUrl ? row.AvatarUrl.replace("https://cdn4t.mobiedu.vn", "https://media-moocs.mobifone.vn") : "",
+                birthday: row.Birthday,
+                dateLogin: row.LastLoginDate,
+                email: row.Email || "",
+                fullname: row.FullName,
+                gender: row.IdGender || 0,
+                exploreField: {},
+                siteId: +NEW_SITE_ID,
+                positionId: -1,
+                infoManagementLevel: null,
+                // infoManagementLevel: {
+                //     managerLevel1Id: managerLevel1.find(item => managerLevel.includes(item.oldId))?._id || "",
+                //     managerLevel2Id: managerLevel2.find(item => managerLevel.includes(item.oldId))?._id || "",
+                //     managerLevel3Id: managerLevel3.find(item => managerLevel.includes(item.oldId))?._id || "",
+                // },
+                isLockoutEnabled: row.IsBlocked == 0 ? true : false,
+                lockoutEndDate: null,
+                passwordHash: row.Pwd,
+                phone: row.Phone || "",
+                pwd: "Migrate@2025",
+                securityStamp: "",
+                status: 1,
+                timeUpdate: null,
+                userName: row.Email,
+                mobieduUserId: row.Id,
+                listRoles: {},
+                listPolicy: [],
+                role: getRoleName(roles.find(item => item.mobiedu_user_id == row.Id)?.role),
+                functionsTree: {},
+                idTeacher: "",
+            });
+        }
 
         // Kiểm tra nếu rows trống thì thoát khỏi vòng lặp
         if (!rows || rows.length === 0) {
