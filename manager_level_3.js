@@ -1,6 +1,7 @@
 import mysql from "mysql2/promise";
 import { MongoClient } from "mongodb";
 import dotenv from "dotenv";
+import moment from "moment";
 
 // Load biến môi trường từ .env
 dotenv.config();
@@ -34,6 +35,7 @@ async function fetchBatch(sqlConnection, tableName, offset, limit, level2_OldIds
     const query = `
     SELECT * FROM ${tableName}
     WHERE IdSite = ${parseInt(OLD_SITE_ID)}
+    AND IsDeleted = 0
     AND IdParent IN (${level2_OldIds.map(id => parseInt(id)).join(",")})
     LIMIT ${parseInt(limit)} OFFSET ${parseInt(offset)}
     `;
@@ -45,14 +47,22 @@ async function fetchBatch(sqlConnection, tableName, offset, limit, level2_OldIds
 }
 
 async function findLevel2(db) {
-    const rows = await db.collection("level-2").find().toArray();
+    const rows = await db.collection("level-2").find({
+        oldId: { $ne: null },
+        siteId: +NEW_SITE_ID
+    }).toArray();
     return rows;
 }
 
+async function deleteOldUnit(db, level) {
+    await db.collection(level).deleteMany({
+        siteId: +NEW_SITE_ID,
+    });
+}
 
 async function migrateTable(sqlConnection, mongoDb, tableName) {
     console.log(`🔄 Đang di chuyển bảng ${tableName}...`);
-
+    await deleteOldUnit(mongoDb, "level-3")
     let offset = 0;
 
     const level2 = await findLevel2(mongoDb)
@@ -63,15 +73,15 @@ async function migrateTable(sqlConnection, mongoDb, tableName) {
         const rows = await fetchBatch(sqlConnection, tableName, offset, BATCH_SIZE, level2_OldIds);
 
         const mappedNews = rows.map((row) => {
-            const level2Find = level2.find(item => item.oldID === row.IdParent)
+            const level2Find = level2.find(item => item.oldId === row.IdParent)
             return {
                 name: row.Name,
                 managerId: ID_ADMIN_SITE,
-                createdAt: null,
+                createdAt: new Date(),
                 totalUser: 0,
-                level1: level2Find?.level1,
+                level1: level2Find?.level1.toString(),
                 level1_name: level2Find?.level1_name,
-                level2: level2Find?._id,
+                level2: level2Find?._id.toString(),
                 level2_name: level2Find?.name,
                 siteId: +NEW_SITE_ID
             }

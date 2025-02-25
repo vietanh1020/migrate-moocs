@@ -1,6 +1,7 @@
 import mysql from "mysql2/promise";
 import { MongoClient } from "mongodb";
 import dotenv from "dotenv";
+import moment from "moment";
 
 // Load biến môi trường từ .env
 dotenv.config();
@@ -34,6 +35,7 @@ async function fetchBatch(sqlConnection, tableName, offset, limit, level1OldIds)
     const query = `
     SELECT * FROM ${tableName}
     WHERE IdSite = ${parseInt(OLD_SITE_ID)}
+    AND IsDeleted = 0
     AND IdParent IN (${level1OldIds.map(id => parseInt(id)).join(",")})
     LIMIT ${parseInt(limit)} OFFSET ${parseInt(offset)}
     `;
@@ -45,13 +47,26 @@ async function fetchBatch(sqlConnection, tableName, offset, limit, level1OldIds)
 }
 
 async function findLevel1(db) {
-    const rows = await db.collection("level-1").find().toArray();
+    const rows = await db.collection("level-1").find({
+        oldId: { $ne: null },
+        siteId: +NEW_SITE_ID
+    }).toArray();
+
     return rows;
+}
+
+async function deleteOldUnit(db, level) {
+    await db.collection(level).deleteMany({
+        siteId: +NEW_SITE_ID,
+        oldId: { $ne: null }  // Ensures oldId is not null
+    });
 }
 
 
 async function migrateTable(sqlConnection, mongoDb, tableName) {
     console.log(`🔄 Đang di chuyển bảng ${tableName}...`);
+    await deleteOldUnit(mongoDb, "level-2")
+
 
     let offset = 0;
 
@@ -59,17 +74,22 @@ async function migrateTable(sqlConnection, mongoDb, tableName) {
     const level1OldIds = level1.map(item => item.oldId)
 
 
+    console.log({ level1 });
+
+
     while (true) {
         const rows = await fetchBatch(sqlConnection, tableName, offset, BATCH_SIZE, level1OldIds);
 
         const mappedNews = rows.map((row) => {
-            const level1InDB = level1.find(item => item.oldID === row.IdParent)
+
+            const level1InDB = level1.find(item => item.oldId == row.IdParent)
+
             return {
                 name: row.Name,
                 managerId: ID_ADMIN_SITE,
-                createdAt: null,
+                createdAt: new Date(),
                 totalUser: 0,
-                level1: level1InDB?._id,
+                level1: level1InDB?._id.toString(),
                 level1_name: level1InDB?.name,
                 oldId: row.Id,
                 siteId: + NEW_SITE_ID

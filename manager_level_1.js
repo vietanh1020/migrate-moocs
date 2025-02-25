@@ -1,6 +1,7 @@
 import mysql from "mysql2/promise";
 import { MongoClient } from "mongodb";
 import dotenv from "dotenv";
+import moment from "moment";
 
 // Load biến môi trường từ .env
 dotenv.config();
@@ -28,12 +29,21 @@ async function connectMySQL() {
         database: MYSQL_DATABASE_LEVEL,
     });
 }
+
+async function deleteOldUnit(db, level) {
+    await db.collection(level).deleteMany({
+        siteId: +NEW_SITE_ID,
+        oldId: { $ne: null }  // Ensures oldId is not null
+    });
+}
+
 // Lấy dữ liệu theo từng batch
 async function fetchBatch(sqlConnection, tableName, offset, limit) {
     const query = `
     SELECT * FROM ${tableName} 
     WHERE IdSite = ${parseInt(OLD_SITE_ID)} 
     AND IdParent IS NULL 
+    AND IsDeleted = 0
     LIMIT ${parseInt(limit)} 
     OFFSET ${parseInt(offset)}
     `;
@@ -47,6 +57,8 @@ async function fetchBatch(sqlConnection, tableName, offset, limit) {
 async function migrateTable(sqlConnection, mongoDb, tableName) {
     console.log(`🔄 Đang di chuyển bảng ${tableName}...`);
 
+    await deleteOldUnit(mongoDb, "level-1")
+
     let offset = 0;
     while (true) {
         const rows = await fetchBatch(sqlConnection, tableName, offset, BATCH_SIZE);
@@ -54,7 +66,7 @@ async function migrateTable(sqlConnection, mongoDb, tableName) {
         const mappedNews = rows.map((row) => ({
             name: row.Name,
             managerId: ID_ADMIN_SITE,
-            createdAt: null,
+            createdAt: new Date(),
             totalUser: 0,
             siteId: +NEW_SITE_ID,
             oldId: row.Id,
