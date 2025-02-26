@@ -14,6 +14,8 @@ B2: chạy lần lượt các script
 
 5. node user.js
 
+6. node user_group.js
+
 # Danh mục khóa hoc
 
 6. node course_category.js
@@ -32,7 +34,7 @@ B2: chạy lần lượt các script
 
 # Tin tức
 
-1. node news.js;
+10. node news.js;
 
 # SCRIPT docker
 

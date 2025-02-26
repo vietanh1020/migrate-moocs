@@ -29,18 +29,8 @@ async function connectMySQL() {
     });
 }
 
-async function CountRecord(tableName) {
-    const query = `SELECT Count(*) FROM ${tableName} WHERE IdSite=${parseInt(OLD_SITE_ID)}`;
-    const [rows] = await sqlConnection.execute(query);
-    console.log(rows[0]?.['Count(*)']);
-
-    return rows[0]?.['Count(*)']
-
-}
-
-
 async function findAllUserGroup(idGroup, sqlConnection, db) {
-    const query = `SELECT * FROM UsersInUserGroups WHERE idGroup=${idGroup}`;
+    const query = `SELECT * FROM UserInMemberGroups WHERE idGroup=${idGroup}`;
     const [rows] = await sqlConnection.execute(query);
 
     const ids = rows.map(item => item.IdUser);
@@ -49,15 +39,21 @@ async function findAllUserGroup(idGroup, sqlConnection, db) {
 
     const usersInGroup = await db.collection("user").find({ mobieduUserId: { $in: ids } }).toArray();
 
-    const usersInGroupIds = usersInGroup.map(item => item._id);
+    const usersInGroupIds = usersInGroup.map(item => item._id.toString());
 
-    return usersInGroupIds.map(item => item._id)
+    return usersInGroupIds
 }
 
+async function deleteOldUsers(db) {
+    await db.collection('groupUser').deleteMany({
+        siteId: +NEW_SITE_ID,
+        oldId: { $ne: null }  // Ensures oldId is not null
+    });
+}
 
 // Lấy dữ liệu theo từng batch
 async function fetchBatch(sqlConnection, tableName, offset, limit) {
-    const query = `SELECT * FROM ${tableName} WHERE IdSite=${parseInt(OLD_SITE_ID)} LIMIT ${parseInt(limit)} OFFSET ${parseInt(offset)}`;
+    const query = `SELECT * FROM ${tableName} WHERE IsDeleted=0 AND IdSite=${parseInt(OLD_SITE_ID)} LIMIT ${parseInt(limit)} OFFSET ${parseInt(offset)}`;
     const [rows] = await sqlConnection.execute(query);
 
     console.log(`🟢 Lấy ${rows.length} bản ghi từ ${tableName} (Offset: ${offset})`);
@@ -65,16 +61,14 @@ async function fetchBatch(sqlConnection, tableName, offset, limit) {
 }
 
 async function migrateTable(sqlConnection, mongoDb, tableName) {
-    const countRecord = await CountRecord(tableName)
+
+    await deleteOldUsers(mongoDb)
 
     console.log(`🔄 Đang di chuyển bảng ${tableName}...`);
 
     let offset = 0;
     while (true) {
-        const rows = await fetchBatch(sqlConnection, tableName, offset, countRecord);
-
-        console.log({ rows });
-
+        const rows = await fetchBatch(sqlConnection, tableName, offset, BATCH_SIZE);
 
         const resultCata = [];
         for (const row of rows) {
@@ -115,7 +109,7 @@ async function migrate() {
     const mongoDb = mongoClient.db(MONGO_DATABASE_USER);
 
     try {
-        await migrateTable(sqlConnection, mongoDb, 'UserGroups');
+        await migrateTable(sqlConnection, mongoDb, 'MemberGroups');
     } catch (error) {
         console.error("❌ Lỗi khi di chuyển dữ liệu:", error);
     } finally {
