@@ -67,7 +67,7 @@ async function migrateTable(sqlConnection, mongoDb, tableName) {
 
     const level2 = await findLevel2(mongoDb)
     const level2_OldIds = level2.map(item => item.oldId)
-
+    if (level2_OldIds.length == 0) return
 
     while (true) {
         const rows = await fetchBatch(sqlConnection, tableName, offset, BATCH_SIZE, level2_OldIds);

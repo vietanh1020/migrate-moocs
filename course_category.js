@@ -46,7 +46,17 @@ async function fetchBatch(sqlConnection, tableName, offset, limit) {
     return rows;
 }
 
+async function deleteOldUnit(db, level) {
+    await db.collection(level).deleteMany({
+        siteId: +NEW_SITE_ID,
+        oldId: { $ne: null }  // Ensures oldId is not null
+    });
+}
+
 async function migrateTable(sqlConnection, mongoDb, tableName) {
+
+    await deleteOldUnit(mongoDb, 'courseCatalog')
+
     const countRecord = await CountRecord(tableName)
 
     console.log(`🔄 Đang di chuyển bảng ${tableName}...`);

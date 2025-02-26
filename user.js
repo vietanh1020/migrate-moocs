@@ -104,7 +104,11 @@ async function migrateTable(sqlConnection, mongoDb, tableName, mongoDbLevel) {
 
         for (const row of rows) {
 
-            // const managerLevel = await fetchManagerLevel(sqlConnection, row.Id)
+            const managerLevel = await fetchManagerLevel(sqlConnection, row.Id)
+
+            const level1 = managerLevel1.find(item => managerLevel.includes(item.oldId))
+            const level2 = managerLevel2.find(item => managerLevel.includes(item.oldId))
+            const level3 = managerLevel3.find(item => managerLevel.includes(item.oldId))
 
             mappedUsers.push({
                 accessFailedCount: 0,
@@ -119,11 +123,11 @@ async function migrateTable(sqlConnection, mongoDb, tableName, mongoDbLevel) {
                 siteId: +NEW_SITE_ID,
                 positionId: -1,
                 infoManagementLevel: null,
-                // infoManagementLevel: {
-                //     managerLevel1Id: managerLevel1.find(item => managerLevel.includes(item.oldId))?._id || "",
-                //     managerLevel2Id: managerLevel2.find(item => managerLevel.includes(item.oldId))?._id || "",
-                //     managerLevel3Id: managerLevel3.find(item => managerLevel.includes(item.oldId))?._id || "",
-                // },
+                infoManagementLevel: {
+                    managerLevel1Id: level3?.level2.toString() || level2?.level1.toString() || level1?._id.toString() || "",
+                    managerLevel2Id: level3?.level2.toString() || level2?._id.toString() || "",
+                    managerLevel3Id: level3?._id.toString() || "",
+                },
                 isLockoutEnabled: row.IsBlocked == 0 ? true : false,
                 lockoutEndDate: null,
                 passwordHash: row.Pwd,

@@ -36,9 +36,10 @@ async function fetchBatch(sqlConnection, tableName, offset, limit, level1OldIds)
     SELECT * FROM ${tableName}
     WHERE IdSite = ${parseInt(OLD_SITE_ID)}
     AND IsDeleted = 0
-    AND IdParent IN (${level1OldIds.map(id => parseInt(id)).join(",")})
+    AND IdParent IN (${level1OldIds.map(id => parseInt(id)).join(",")
+        })
     LIMIT ${parseInt(limit)} OFFSET ${parseInt(offset)}
-    `;
+`;
 
     const [rows] = await sqlConnection.execute(query);
 
@@ -71,9 +72,9 @@ async function migrateTable(sqlConnection, mongoDb, tableName) {
     let offset = 0;
 
     const level1 = await findLevel1(mongoDb)
+
     const level1OldIds = level1.map(item => item.oldId)
-
-
+    if (level1OldIds.length == 0) return
     console.log({ level1 });
 
 

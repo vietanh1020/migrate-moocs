@@ -34,11 +34,13 @@ async function findCourseBySite(db) {
 }
 
 
+
+
 // Lấy dữ liệu theo từng batch
 async function fetchBatch(sqlConnection, tableName, offset, limit, courseOldId) {
     const query = `
     SELECT * FROM ${tableName} 
-    WHERE IDCourse IN (${courseOldId.map(id => parseInt(id)).join(",")})
+    WHERE IDCourse IN (${courseOldId.filter(item => !!item).map(id => parseInt(id)).join(",")})
     AND IdParent IS NULL 
     LIMIT ${parseInt(limit)} 
     OFFSET ${parseInt(offset)}
@@ -52,7 +54,6 @@ async function fetchBatch(sqlConnection, tableName, offset, limit, courseOldId) 
 
 async function migrateTable(sqlConnection, mongoDb, tableName) {
     console.log(`🔄 Đang di chuyển bảng ${tableName}...`);
-
 
     const courseInMongo = await findCourseBySite(mongoDb)
 
@@ -73,6 +74,7 @@ async function migrateTable(sqlConnection, mongoDb, tableName) {
                 createAt: row.CreatedDate,
                 updateAt: row.ModifiedDate,
                 oldId: row.Id,
+                siteId: +NEW_SITE_ID,
             }
 
         });

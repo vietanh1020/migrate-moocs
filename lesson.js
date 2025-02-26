@@ -76,7 +76,7 @@ async function findQuestionExam(roomId) {
 async function fetchBatch(sqlConnection, tableName, offset, limit, courseOldId) {
     const query = `
     SELECT * FROM ${tableName} 
-    WHERE IDCourse IN (${courseOldId.map(id => parseInt(id)).join(",")})
+    WHERE IDCourse IN (${courseOldId.filter(item => !!item).map(id => parseInt(id)).join(",")})
     AND IdParent IS NOT NULL 
     LIMIT ${parseInt(limit)} 
     OFFSET ${parseInt(offset)}
@@ -157,6 +157,8 @@ async function migrateTable(sqlConnection, mongoDb, tableName) {
 
             const questionsExam = await findQuestionExam(roomTest?.exam_id) || [];
 
+            const file = row.FileUrls ? JSON.stringify(row.FileUrls) : null
+
             mappedLesson.push({
                 chapterId: chapter?._id.toString(),
                 courseId: chapter?.courseId.toString(),
@@ -164,7 +166,8 @@ async function migrateTable(sqlConnection, mongoDb, tableName) {
                 lessonType: getType(row),
                 urlLessonType: row.VideoFileUrl,
                 uriVideo: row.VideoFileUrl,
-                urlFileAttended: row.FileUrls ? JSON.stringify(row.FileUrls) : null,
+                urlFileAttended: row.FileUrls?.[0]?.url || "",
+                oldListFile: file,
                 fileAttendedName: row.FileUrls ? JSON.stringify(row.FileUrls) : null,
                 tag: [],
                 status: 1,
@@ -183,8 +186,9 @@ async function migrateTable(sqlConnection, mongoDb, tableName) {
                 markPassExam: +roomTest?.pass_point || 0, // điểm pass bài
                 createAt: moment(row.CreatedDate).unix(),
                 updateAt: moment(row.ModifiedDate).unix(),
-                oldId: row.oldId,
+                oldId: row.Id,
                 oldIdExam: row.IdExam,
+                siteId: +NEW_SITE_ID,
             });
         }
 

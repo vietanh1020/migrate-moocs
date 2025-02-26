@@ -29,9 +29,16 @@ async function connectMySQL() {
     });
 }
 
+async function deleteOldUnit(db, level) {
+    await db.collection(level).deleteMany({
+        siteId: +NEW_SITE_ID,
+    });
+}
 
 async function InsertCateDefault(mongoDb) {
     const collection = mongoDb.collection('category'); // Replace with your actual collection name
+
+
 
     const defaultCategory = {
         _id: new ObjectId(),
@@ -58,6 +65,9 @@ async function fetchBatch(sqlConnection, tableName, offset, limit) {
 
 async function migrateTable(sqlConnection, mongoDb, tableName) {
     console.log(`🔄 Đang di chuyển bảng ${tableName}...`);
+
+    await deleteOldUnit(mongoDb, 'category')
+    await deleteOldUnit(mongoDb, 'news')
 
 
     const defaultValue = await InsertCateDefault(mongoDb);

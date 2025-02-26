@@ -95,7 +95,7 @@ async function CreateOrFindTeacher(teacherIds, mongoDbCourse, sqlConnectionUser)
                 personal: "",
                 linkYoutube: "",
                 linkFb: "",
-                description: "",
+                description: user.Description,
                 siteId: +NEW_SITE_ID,
                 oldId: teacherId,
                 createdAt: moment().unix()
@@ -113,8 +113,21 @@ async function CreateOrFindTeacher(teacherIds, mongoDbCourse, sqlConnectionUser)
 
 
 
+async function deleteOldUnit(db, level) {
+    await db.collection(level).deleteMany({
+        siteId: +NEW_SITE_ID,
+        oldId: { $ne: null }
+    });
+}
+
 async function migrateTable(sqlConnection, mongoDbCourse, tableName, sqlConnectionUser) {
     console.log(`🔄 Đang di chuyển bảng ${tableName}...`);
+
+
+    await deleteOldUnit(mongoDbCourse, 'course')
+    await deleteOldUnit(mongoDbCourse, 'teachers')
+    await deleteOldUnit(mongoDbCourse, 'chapter')
+    await deleteOldUnit(mongoDbCourse, 'lesson')
 
     let offset = 0;
     while (true) {
