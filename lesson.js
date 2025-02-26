@@ -49,23 +49,39 @@ async function findRoomTest(records) {
     return rows;
 }
 
-async function findQuestionExam(roomId) {
-    if (!roomId) return;
 
-    if (records.length == 0) return [];
+async function findAllQues(sqlConnection4t, exam_id) {
+    if (!exam_id) return []
+    const query = `SELECT * FROM questions WHERE exam_id='${exam_id}'`;
+    const [rows] = await sqlConnection4t.execute(query);
+    return rows
+}
+
+async function findQuestionExam(roomId) {
+
+    if (!roomId) return [];
+
     const query = `SELECT * FROM exams WHERE room_id='${roomId}'`;
     const [rows] = await sqlConnection4t.execute(query);
-    const questions = rows.map(item => {
+
+    if (rows.length == 0) return []
+
+    const allQues = await findAllQues(sqlConnection4t, rows?.[0]?.id)
+
+    const questions = allQues.map((item, index) => {
         return {
             questionText: item.question.content,
             listAnswer: item.answers.map((ans, index) => {
                 return {
-                    texAnswer: ans.content,
+                    textAnswer: ans.content,
                     isTrue: ans.id === item.correct,
                     position: index,
+
                 }
             }),
-            score: item.point
+            order: index,
+            questionType: 2,
+            score: 1
         }
     })
 
@@ -96,6 +112,7 @@ async function findChapter(records, db) {
 
 
 function getType(row) {
+    if (row.Name == "Bài kiểm tra") return 5;
 
     if (row.VideoFileType == "Video") return 0;
     if (row.VideoFileType == "Youtube") return 1;
@@ -155,7 +172,7 @@ async function migrateTable(sqlConnection, mongoDb, tableName) {
 
             const chapter = chapters.find(item => row.IDParent == item.oldId);
 
-            const questionsExam = await findQuestionExam(roomTest?.exam_id) || [];
+            const questionsExam = await findQuestionExam(roomTest?.id) || [];
 
             const file = row.FileUrls ? JSON.stringify(row.FileUrls) : null
 
@@ -174,7 +191,7 @@ async function migrateTable(sqlConnection, mongoDb, tableName) {
                 urlAvatar: "",
                 description: row.Description || row.Content,
                 lessonFinishStatus: getTypeEnd(row),
-                percentFinish: 100,
+                percentFinish: 0,
                 questions: questionsExam, // câu hỏi
                 score: questionsExam.reduce((sum, item) => sum + item.score, 0), // tổng điểm
                 lessonStatus: 1,
