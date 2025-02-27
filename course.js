@@ -53,7 +53,7 @@ async function fetchBatch(sqlConnection, tableName, offset, limit) {
 async function findCategory(records, db) {
     if (records.length === 0) return [];
     const ids = records.map(item => item.IdCategory);
-    const rows = await db.collection("courseCatalog").find({ oldId: { $in: ids } }).toArray();
+    const rows = await db.collection("courseCatalog").find({ oldId: { $in: ids }, siteId: +NEW_SITE_ID, }).toArray();
     return rows;
 }
 
@@ -134,6 +134,10 @@ async function migrateTable(sqlConnection, mongoDbCourse, tableName, sqlConnecti
         const rows = await fetchBatch(sqlConnection, tableName, offset, BATCH_SIZE);
 
         const category = await findCategory(rows, mongoDbCourse);
+
+
+        console.log({ category });
+
 
         const mappedCourse = [];
 
