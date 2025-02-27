@@ -1,5 +1,5 @@
 import mysql from "mysql2/promise";
-import { MongoClient, ObjectId } from "mongodb";
+import { Long, MongoClient, ObjectId } from "mongodb";
 import dotenv from "dotenv";
 import moment from "moment";
 // Load biến môi trường từ .env
@@ -172,7 +172,7 @@ async function migrateTable(sqlConnection, mongoDbCourse, tableName, sqlConnecti
                 updateAt: moment(row.ModifiedAt).unix(),
                 backgroundCertificate: null,
                 companyId: -1,
-                createOn: moment().unix(),
+                // createOn: moment().unix(),
                 isCertification: true,
                 numberLesson: +row.Price || 0,
                 requiredScore: +row.SellingPrice || 0,
