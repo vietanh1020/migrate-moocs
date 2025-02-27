@@ -148,7 +148,7 @@ async function migrateTable(sqlConnection, mongoDbCourse, tableName, sqlConnecti
             mappedCourse.push({
                 name: row.Name,
                 authorId: '', // authorId.toString()
-                isHidden: 0,
+                isHidden: row.Status == 1 ? 1 : 0,
                 avatarURL: row.ThumbnailFileUrl,
                 coverImageURL: row.CoverFileUrl,
                 introVideoURL: "",
@@ -167,7 +167,7 @@ async function migrateTable(sqlConnection, mongoDbCourse, tableName, sqlConnecti
                 chapters: null,
                 isRegister: row.IsOpenCourse == 1 ? 0 : 1,
                 view: 10000,
-                status: row.Status == 1 ? 1 : 0,
+                status: row.ApproveStatus == 2 ? 0 : 1,
                 createAt: moment(row.CreatedAt).unix(),
                 updateAt: moment(row.ModifiedAt).unix(),
                 backgroundCertificate: null,
