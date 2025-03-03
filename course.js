@@ -43,7 +43,7 @@ async function connectMySQLUser() {
 
 // Lấy dữ liệu theo từng batch
 async function fetchBatch(sqlConnection, tableName, offset, limit) {
-    const query = `SELECT * FROM ${tableName} WHERE IdSite=${OLD_SITE_ID} LIMIT ${parseInt(limit)} OFFSET ${parseInt(offset)}`;
+    const query = `SELECT * FROM ${tableName} WHERE IdSite=${OLD_SITE_ID} AND IsDeleted=0 LIMIT ${parseInt(limit)} OFFSET ${parseInt(offset)}`;
     const [rows] = await sqlConnection.execute(query);
 
     console.log(`🟢 Lấy ${rows.length} bản ghi từ ${tableName} (Offset: ${offset})`);
@@ -148,7 +148,7 @@ async function migrateTable(sqlConnection, mongoDbCourse, tableName, sqlConnecti
             mappedCourse.push({
                 name: row.Name,
                 authorId: '', // authorId.toString()
-                isHidden: row.Status == 1 ? 1 : 0,
+                isHidden: row.Status == 2 ? 1 : 0,
                 avatarURL: row.ThumbnailFileUrl,
                 coverImageURL: row.CoverFileUrl,
                 introVideoURL: "",
@@ -167,7 +167,7 @@ async function migrateTable(sqlConnection, mongoDbCourse, tableName, sqlConnecti
                 chapters: null,
                 isRegister: row.IsOpenCourse == 1 ? 0 : 1,
                 view: 10000,
-                status: row.ApproveStatus == 2 ? 0 : 1,
+                status: row.ApproveStatus == 1 ? 0 : 1,
                 createAt: moment(row.CreatedAt).unix(),
                 updateAt: moment(row.ModifiedAt).unix(),
                 backgroundCertificate: null,

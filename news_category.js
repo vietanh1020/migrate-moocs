@@ -1,7 +1,7 @@
-import mysql from "mysql2/promise";
-import { MongoClient, ObjectId } from "mongodb";
 import dotenv from "dotenv";
 import moment from "moment";
+import { MongoClient } from "mongodb";
+import mysql from "mysql2/promise";
 
 // Load biến môi trường từ .env
 dotenv.config();
@@ -29,36 +29,28 @@ async function connectMySQL() {
     });
 }
 
-async function deleteOldNews(db) {
-    await db.collection('news').deleteMany({
-        siteId: +NEW_SITE_ID,
-        oldId: { $ne: null }  // Ensures oldId is not null
-    });
-}
-
-
 // Lấy dữ liệu theo từng batch
 async function fetchBatch(sqlConnection, tableName, offset, limit) {
-    const query = `SELECT * FROM ${tableName} WHERE IdSite=${parseInt(OLD_SITE_ID)} LIMIT ${parseInt(limit)} OFFSET ${parseInt(offset)}`;
+    const query = `SELECT * FROM ${tableName} WHERE IdSite=${parseInt(OLD_SITE_ID)} AND IsDeleted=0 LIMIT ${parseInt(limit)} OFFSET ${parseInt(offset)}`;
     const [rows] = await sqlConnection.execute(query);
 
     console.log(`🟢 Lấy ${rows.length} bản ghi từ ${tableName} (Offset: ${offset})`);
     return rows;
 }
 
-
-async function findCategory(db) {
-    const rows = await db.collection("category").find({ siteId: +NEW_SITE_ID, }).toArray();
-    return rows;
+async function deleteOldUnit(db, level) {
+    await db.collection(level).deleteMany({
+        siteId: +NEW_SITE_ID,
+        oldId: { $ne: null }  // Ensures oldId is not null
+    });
 }
 
 async function migrateTable(sqlConnection, mongoDb, tableName) {
+
+    await deleteOldUnit(mongoDb, 'category')
+
+
     console.log(`🔄 Đang di chuyển bảng ${tableName}...`);
-
-
-    await deleteOldNews(mongoDb, 'news')
-    const categoryNews = await findCategory(mongoDb)
-
 
     let offset = 0;
     while (true) {
@@ -66,28 +58,32 @@ async function migrateTable(sqlConnection, mongoDb, tableName) {
 
         const mappedNews = rows.map((row) => {
             return {
-                slug: row.Slug,
-                url_img: row.ThumbnailFileUrl ? row.ThumbnailFileUrl.replace("https://cdn4t.mobiedu.vn", "https://media-moocs.mobifone.vn") : "",
-                title: row.Title,
-                short_description: row.Description,
-                description: row.HtmlContent.replaceAll("https://cdn4t.mobiedu.vn", "https://media-moocs.mobifone.vn"),
-                status: row.ApproveStatus,
+                title: row.Name,
+                description: row.Description,
                 createdAt: moment(row.CreatedAt).unix(),
-                category: {
-                    _id: categoryNews.find(item => item.oldId === row.IdCategory)?._id.toString(),
-                    title: categoryNews.find(item => item.oldId === row.IdCategory)?.title
-                },
+                oldId: row.Id,
                 siteId: +NEW_SITE_ID,
-                view_count: row.ViewCounter,
-                view_fake: 0,
-                pin_type: 0,
             }
         });
 
-        // Kiểm tra nếu rows trống thì thoát khỏi vòng lặp
-        if (!rows || rows.length === 0) break;
 
-        await mongoDb.collection('news').insertMany(mappedNews);
+
+        // Kiểm tra nếu rows trống thì thoát khỏi vòng lặp
+        if (!rows || rows.length === 0) {
+            const defaultVal = {
+                title: "Default",
+                description: "",
+                createdAt: moment().unix(),
+                oldId: -1,
+                siteId: +NEW_SITE_ID,
+            }
+
+            mappedNews.push(defaultVal)
+            await mongoDb.collection('category').insertMany(mappedNews);
+            break;
+        };
+
+        await mongoDb.collection('category').insertMany(mappedNews);
 
         offset += +BATCH_SIZE;
     }
@@ -104,7 +100,7 @@ async function migrate() {
     const mongoDb = mongoClient.db(MONGO_DATABASE_ADMIN);
 
     try {
-        await migrateTable(sqlConnection, mongoDb, 'Post');
+        await migrateTable(sqlConnection, mongoDb, 'PostCategories');
     } catch (error) {
         console.error("❌ Lỗi khi di chuyển dữ liệu:", error);
     } finally {

@@ -30,4 +30,5 @@ B2: Sửa .env
 
     9. node lesson.js
 
-    10. node news.js;
+    10  node news_category.js
+    11. node news.js;
