@@ -124,7 +124,7 @@ async function migrateTable(sqlConnection, mongoDb, tableName, mongoDbLevel) {
                 positionId: -1,
                 infoManagementLevel: null,
                 infoManagementLevel: {
-                    managerLevel1Id: level3?.level2.toString() || level2?.level1.toString() || level1?._id.toString() || "",
+                    managerLevel1Id: level3?.level1.toString() || level2?.level1.toString() || level1?._id.toString() || "",
                     managerLevel2Id: level3?.level2.toString() || level2?._id.toString() || "",
                     managerLevel3Id: level3?._id.toString() || "",
                 },
