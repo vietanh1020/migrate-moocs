@@ -66,7 +66,7 @@ async function migrateTable(sqlConnection, mongoDb, tableName) {
         const mappedNews = rows.map((row) => ({
             name: row.Name,
             managerId: ID_ADMIN_SITE,
-            createdAt: new Date(),
+            createdAt: row.CreatedAt,
             totalUser: 0,
             siteId: +NEW_SITE_ID,
             oldId: row.Id,

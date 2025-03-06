@@ -88,7 +88,7 @@ async function migrateTable(sqlConnection, mongoDb, tableName) {
             return {
                 name: row.Name,
                 managerId: ID_ADMIN_SITE,
-                createdAt: new Date(),
+                createdAt: row.CreatedAt,
                 totalUser: 0,
                 level1: level1InDB?._id.toString(),
                 level1_name: level1InDB?.name,

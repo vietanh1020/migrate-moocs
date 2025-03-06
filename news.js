@@ -64,19 +64,21 @@ async function migrateTable(sqlConnection, mongoDb, tableName) {
     let offset = 0;
     while (true) {
         const rows = await fetchBatch(sqlConnection, tableName, offset, BATCH_SIZE);
+        const categoryDefault = categoryNews.find(item => item.name === 'Default')
 
         const mappedNews = rows.map((row) => {
+            const category = categoryNews.find(item => item.oldId === row.IdCategory) || categoryDefault
             return {
                 slug: row.Slug,
                 url_img: row.ThumbnailFileUrl, //? row.ThumbnailFileUrl.replace("https://cdn4t.mobiedu.vn", "https://media-moocs.mobifone.vn") : ""
                 title: row.Title,
                 short_description: row.Description,
                 description: row.HtmlContent, //.replaceAll("https://cdn4t.mobiedu.vn", "https://media-moocs.mobifone.vn")
-                status: 0,
+                status: row.Status === 1 && row.ApproveStatus === 2 ? 1 : 0,
                 createdAt: moment(row.CreatedAt).unix(),
                 category: {
-                    _id: categoryNews.find(item => item.oldId === row.IdCategory)?._id.toString(),
-                    title: categoryNews.find(item => item.oldId === row.IdCategory)?.title
+                    _id: category?._id.toString(),
+                    title: category?.title
                 },
                 oldId: row.Id,
                 siteId: +NEW_SITE_ID,
