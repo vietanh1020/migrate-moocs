@@ -1,14 +1,13 @@
 # Chuân bị: Tạo site + tạo adminSite trước
 
-B1: Tạo site Mới và tạo tài khoản Admin - Lấy ID site mới - Lấy ID của admin
+B1: Tạo site Mới và tạo tài khoản Admin - Lấy ID site mới
 
 B2: Sửa .env
 
 - Sửa tất cả env của MYSQL
 
-- Sửa OLD_SITE_ID: là ID của site ở Hệ thống cũ
-  NEW_SITE_ID: là ID site mới lấy ở B1
-  ID_ADMIN_SITE: là Id của Admin lấy ở B1
+* Sửa OLD_SITE_ID: là ID của site ở Hệ thống cũ
+* NEW_SITE_ID: là ID site mới lấy ở B1
 
 # B3: Chạy lần lượt các script để Migrate
 
