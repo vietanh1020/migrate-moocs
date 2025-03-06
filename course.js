@@ -40,7 +40,6 @@ async function connectMySQLUser() {
     });
 }
 
-
 // Lấy dữ liệu theo từng batch
 async function fetchBatch(sqlConnection, tableName, offset, limit) {
     const query = `SELECT * FROM ${tableName} WHERE IdSite=${OLD_SITE_ID} AND IsDeleted=0 LIMIT ${parseInt(limit)} OFFSET ${parseInt(offset)}`;
@@ -135,14 +134,10 @@ async function migrateTable(sqlConnection, mongoDbCourse, tableName, sqlConnecti
 
         const category = await findCategory(rows, mongoDbCourse);
 
-
-        console.log({ category });
-
-
         const mappedCourse = [];
 
         for (const row of rows) {
-            const categoryItem = category.find(item => row.IdCategory == item.oldId);
+            const categoryItem = row.IdCategory ? category.find(item => row.IdCategory === item.oldId) : '';
             const cateId = categoryItem ? categoryItem._id.toString() : '';
 
             mappedCourse.push({

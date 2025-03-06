@@ -39,7 +39,7 @@ async function deleteOldNews(db) {
 
 // Lấy dữ liệu theo từng batch
 async function fetchBatch(sqlConnection, tableName, offset, limit) {
-    const query = `SELECT * FROM ${tableName} WHERE IdSite=${parseInt(OLD_SITE_ID)} LIMIT ${parseInt(limit)} OFFSET ${parseInt(offset)}`;
+    const query = `SELECT * FROM ${tableName} WHERE IdSite=${parseInt(OLD_SITE_ID)} AND IsDeleted=0 LIMIT ${parseInt(limit)} OFFSET ${parseInt(offset)}`;
     const [rows] = await sqlConnection.execute(query);
 
     console.log(`🟢 Lấy ${rows.length} bản ghi từ ${tableName} (Offset: ${offset})`);
@@ -57,6 +57,7 @@ async function migrateTable(sqlConnection, mongoDb, tableName) {
 
 
     await deleteOldNews(mongoDb, 'news')
+
     const categoryNews = await findCategory(mongoDb)
 
 
@@ -67,16 +68,17 @@ async function migrateTable(sqlConnection, mongoDb, tableName) {
         const mappedNews = rows.map((row) => {
             return {
                 slug: row.Slug,
-                url_img: row.ThumbnailFileUrl ? row.ThumbnailFileUrl.replace("https://cdn4t.mobiedu.vn", "https://media-moocs.mobifone.vn") : "",
+                url_img: row.ThumbnailFileUrl, //? row.ThumbnailFileUrl.replace("https://cdn4t.mobiedu.vn", "https://media-moocs.mobifone.vn") : ""
                 title: row.Title,
                 short_description: row.Description,
-                description: row.HtmlContent.replaceAll("https://cdn4t.mobiedu.vn", "https://media-moocs.mobifone.vn"),
-                status: row.ApproveStatus,
+                description: row.HtmlContent, //.replaceAll("https://cdn4t.mobiedu.vn", "https://media-moocs.mobifone.vn")
+                status: 0,
                 createdAt: moment(row.CreatedAt).unix(),
                 category: {
                     _id: categoryNews.find(item => item.oldId === row.IdCategory)?._id.toString(),
                     title: categoryNews.find(item => item.oldId === row.IdCategory)?.title
                 },
+                oldId: row.Id,
                 siteId: +NEW_SITE_ID,
                 view_count: row.ViewCounter,
                 view_fake: 0,

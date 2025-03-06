@@ -68,13 +68,12 @@ async function migrateTable(sqlConnection, mongoDb, tableName) {
 
         const mappedNews = rows.map((row) => {
             const id = new ObjectId();
-            console.log({ id });
             return {
                 _id: id,
                 courseCatalogName: row.Name,
                 courseCatalogFather: row.IdParent,
                 description: row.Description,
-                isHidden: row.DisplayOrder,
+                isHidden: row.DisplayOrder == 0 ? false : true,
                 courseCatalogLevel: row.IdParent ? 2 : 1,
                 createdAt: moment(row.CreatedAt).unix(),
                 updatedAt: moment(row.ModifiedAt).unix(),
