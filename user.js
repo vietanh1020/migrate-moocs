@@ -1,6 +1,6 @@
-import mysql from "mysql2/promise";
-import { MongoClient } from "mongodb";
 import dotenv from "dotenv";
+import { MongoClient } from "mongodb";
+import mysql from "mysql2/promise";
 
 // Load biến môi trường từ .env
 dotenv.config();
@@ -16,7 +16,6 @@ const {
     MONGO_DATABASE_USER,
     BATCH_SIZE,
     NEW_SITE_ID,
-    MYSQL_DATABASE_4T,
     OLD_SITE_ID,
 } = process.env;
 
@@ -31,20 +30,11 @@ async function connectMySQL() {
     });
 }
 
-async function connectTableRole() {
-    return mysql.createConnection({
-        host: MYSQL_HOST,
-        user: MYSQL_USER,
-        password: MYSQL_PASSWORD,
-        database: MYSQL_DATABASE_4T,
-    });
-}
-
-function getRoleName(role) {
-    if (role == "owner") return "ADMIN";
-    if (role == "admin") return "ADMIN"
-    if (role == "teacher") return "TEACHER"
-    return "STUDENT"
+function getRoleName(IdType) {
+    if (IdType == 2) return "ADMIN"
+    if (IdType == 3) return "TEACHER"
+    if (IdType == 4) return "STUDENT"
+    return ""
 }
 
 // Lấy dữ liệu theo từng batch
@@ -62,14 +52,6 @@ async function fetchManagerLevel(sqlConnection, IdUser) {
     const [rows] = await sqlConnection.execute(query);
 
     return rows.map(item => item.IdUnit);
-}
-
-async function findRole(records) {
-    if (records.length == 0) return [];
-    const ids = records.map(item => item.Id)
-    const query = `SELECT * FROM users WHERE mobiedu_user_id IN (${ids.join(",")})`;
-    const [rows] = await sqlConnectionRole.execute(query);
-    return rows;
 }
 
 async function findManagerLevel(mongoDbLevel, level) {
@@ -97,9 +79,6 @@ async function migrateTable(sqlConnection, mongoDb, tableName, mongoDbLevel) {
     let offset = 0;
     while (true) {
         const rows = await fetchBatch(sqlConnection, tableName, offset, BATCH_SIZE);
-
-        const roles = await findRole(rows);
-
         const mappedUsers = [];
 
         for (const row of rows) {
@@ -140,7 +119,7 @@ async function migrateTable(sqlConnection, mongoDb, tableName, mongoDbLevel) {
                 mobieduUserId: row.Id,
                 listRoles: {},
                 listPolicy: [],
-                role: getRoleName(roles.find(item => item.mobiedu_user_id == row.Id)?.role),
+                role: getRoleName(row.IdType),
                 functionsTree: {},
                 idTeacher: "",
             });
@@ -159,7 +138,6 @@ async function migrateTable(sqlConnection, mongoDb, tableName, mongoDbLevel) {
     console.log(`🏁 Hoàn tất di chuyển bảng ${tableName}!`);
 }
 
-const sqlConnectionRole = await connectTableRole()
 const sqlConnection = await connectMySQL();
 
 // Chạy quá trình di chuyển
