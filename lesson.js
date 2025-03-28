@@ -42,6 +42,7 @@ async function connectDB_4T() {
 async function findRoomTest(records) {
     if (records.length == 0) return [];
     const ids = [...new Set(records.map(item => item.IdExam))].filter(item => !!item);
+    if (ids.length == 0) return [];
     const formattedIds = ids.map(id => `'${id}'`).join(",");
 
     const query = `SELECT * FROM rooms WHERE id IN (${formattedIds})`;
@@ -105,6 +106,7 @@ async function fetchBatch(sqlConnection, tableName, offset, limit, courseOldId) 
 }
 
 async function findChapter(records, db) {
+    if (records.length == 0) return [];
     const ids = [...new Set(records.map(item => item._id.toString()))];
     const rows = await db.collection("chapter").find({ courseId: { $in: ids } }).toArray();
     return rows;
@@ -112,15 +114,12 @@ async function findChapter(records, db) {
 
 
 function getType(row) {
-    if (row.Name == "Bài kiểm tra") return 5;
-
+    if (row.ExamType == 'room') return 5;
     if (row.VideoFileType == "Video") return 0;
     if (row.VideoFileType == "Youtube") return 1;
-    if (row.Name == "File ghi hình trực tuyến") return 3;
-    if (row.Name == "File text") return 4;
-    if (row.Name == "Test" && row.ExamType == 'room') return 5;
+    if (row.VideoFileType == "Scorm") return 3;
 
-    return 0;
+    return 4;
 
     // [Description("Dạng Video")] VIDEO = 0,
     // [Description("Dạng Youtube")] YOUTUBE = 1,
@@ -134,8 +133,7 @@ function getType(row) {
 
 function getTypeEnd(row) {
     if (row.VideoFileType == "Video" || row.VideoFileType == "Youtube") return 0;
-    if (row.Name == "Bài kiểm tra") return 1
-    if (row.Name == "Test" && row.ExamType == 'room') return 1;
+    if (row.ExamType == 'room') return 1
 
     return 2
 }
@@ -144,8 +142,6 @@ async function findCourseBySite(db) {
     const rows = await db.collection("course").find({ siteId: +NEW_SITE_ID }).toArray();
     return rows;
 }
-
-
 
 async function migrateTable(sqlConnection, mongoDb, tableName) {
     console.log(`🔄 Đang di chuyển bảng ${tableName}...`);
@@ -163,9 +159,6 @@ async function migrateTable(sqlConnection, mongoDb, tableName) {
         const RoomTestBatch = await findRoomTest(rows)
 
         const mappedLesson = [];
-
-
-
 
         for (const row of rows) {
             const roomTest = RoomTestBatch.find(item => row.IdExam == item.id);
