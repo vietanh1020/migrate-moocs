@@ -60,7 +60,7 @@ async function migrateTable(sqlConnection, mongoDb, tableName) {
             return {
                 title: row.Name,
                 description: row.Description,
-                createdAt: moment(row.CreatedAt).unix(),
+                createdAt: row.CreatedAt,
                 oldId: row.Id,
                 siteId: +NEW_SITE_ID,
             }
@@ -73,7 +73,7 @@ async function migrateTable(sqlConnection, mongoDb, tableName) {
             const defaultVal = {
                 title: "Default",
                 description: "",
-                createdAt: moment().unix(),
+                createdAt: new Date(),
                 oldId: -1,
                 siteId: +NEW_SITE_ID,
             }

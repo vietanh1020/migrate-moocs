@@ -97,7 +97,7 @@ async function CreateOrFindTeacher(teacherIds, mongoDbCourse, sqlConnectionUser)
                 description: user.Description,
                 siteId: +NEW_SITE_ID,
                 oldId: teacherId,
-                createdAt: moment().unix()
+                createdAt: new Date()
             };
 
             const result = await mongoDbCourse.collection('teachers').insertOne(newTeacher);
@@ -119,7 +119,7 @@ async function deleteOldUnit(db, level) {
     });
 }
 
-async function migrateTable(sqlConnection, mongoDbCourse, tableName, sqlConnectionUser) {
+async function migrateTable(sqlConnection, mongoDbCourse, mongoDbExam, tableName, sqlConnectionUser) {
     console.log(`🔄 Đang di chuyển bảng ${tableName}...`);
 
 
@@ -127,6 +127,9 @@ async function migrateTable(sqlConnection, mongoDbCourse, tableName, sqlConnecti
     await deleteOldUnit(mongoDbCourse, 'teachers')
     await deleteOldUnit(mongoDbCourse, 'chapter')
     await deleteOldUnit(mongoDbCourse, 'lesson')
+    await deleteOldUnit(mongoDbCourse, 'examSet')
+    await deleteOldUnit(mongoDbExam, 'roomTest')
+    await deleteOldUnit(mongoDbExam, 'examSetRoomTest')
 
     let offset = 0;
     while (true) {
@@ -150,7 +153,7 @@ async function migrateTable(sqlConnection, mongoDbCourse, tableName, sqlConnecti
                 catalogId: cateId,
                 teacherId: "", // teacherId.toString()
                 teacherIds: await CreateOrFindTeacher([...new Set([row.IDTeacher, row.IDCoTeacher].filter(Boolean))], mongoDbCourse, sqlConnectionUser),
-
+                maximumCompletionTime: 10 * 365,
                 intro: row.WelcomeCourse,
                 info: row.AboutCourse,
                 benefit: row.Benefits,
@@ -163,8 +166,8 @@ async function migrateTable(sqlConnection, mongoDbCourse, tableName, sqlConnecti
                 isRegister: row.IsOpenCourse == 1 ? 0 : 1,
                 view: 10000,
                 status: row.ApproveStatus == 1 ? 0 : 1,
-                createAt: moment(row.CreatedAt).unix(),
-                updateAt: moment(row.ModifiedAt).unix(),
+                createAt: row.CreatedAt,
+                updateAt: row.ModifiedAt,
                 backgroundCertificate: null,
                 companyId: -1,
                 // createOn: moment().unix(),
@@ -195,9 +198,10 @@ async function migrate() {
     const mongoClient = new MongoClient(MONGO_URL);
     await mongoClient.connect();
     const mongoDbCourse = mongoClient.db(MONGO_DATABASE_COURSE);
+    const mongoDbExam = mongoClient.db('db_moocs_exam');
 
     try {
-        await migrateTable(sqlConnection, mongoDbCourse, 'Courses', sqlConnectionUser);
+        await migrateTable(sqlConnection, mongoDbCourse, mongoDbExam, 'Courses', sqlConnectionUser);
     } catch (error) {
         console.error("❌ Lỗi khi di chuyển dữ liệu:", error);
     } finally {

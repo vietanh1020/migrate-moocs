@@ -75,7 +75,7 @@ async function migrateTable(sqlConnection, mongoDb, tableName) {
                 short_description: row.Description,
                 description: row.HtmlContent, //.replaceAll("https://cdn4t.mobiedu.vn", "https://media-moocs.mobifone.vn")
                 status: row.ApproveStatus == 2 ? true : false,
-                createdAt: moment(row.CreatedAt).unix(),
+                createdAt: row.CreatedAt,
                 category: {
                     _id: category?._id.toString(),
                     title: category?.title

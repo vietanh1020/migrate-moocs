@@ -84,7 +84,7 @@ async function migrateTable(sqlConnection, mongoDb, tableName) {
                 oldId: row.Id,
                 idManagementLevel: "",
                 siteId: +NEW_SITE_ID,
-                createdAt: moment(row.CreateAt).unix(),
+                createdAt: row.CreateAt,
             });
         }
 
