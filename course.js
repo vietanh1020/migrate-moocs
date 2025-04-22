@@ -1,7 +1,6 @@
-import mysql from "mysql2/promise";
-import { Long, MongoClient, ObjectId } from "mongodb";
 import dotenv from "dotenv";
-import moment from "moment";
+import { MongoClient, ObjectId } from "mongodb";
+import mysql from "mysql2/promise";
 // Load biến môi trường từ .env
 dotenv.config();
 
@@ -17,9 +16,8 @@ const {
     OLD_SITE_ID,
     MONGO_DATABASE_COURSE,
     MONGO_DATABASE_USER,
-    MYSQL_DATABASE_AUTH
+    MYSQL_DATABASE_AUTH,
 } = process.env;
-
 
 // Kết nối MySQL
 async function connectMySQL() {
@@ -42,23 +40,37 @@ async function connectMySQLUser() {
 
 // Lấy dữ liệu theo từng batch
 async function fetchBatch(sqlConnection, tableName, offset, limit) {
-    const query = `SELECT * FROM ${tableName} WHERE IdSite=${OLD_SITE_ID} AND IsDeleted=0 LIMIT ${parseInt(limit)} OFFSET ${parseInt(offset)}`;
+    const query = `SELECT * FROM ${tableName} WHERE IdSite=${OLD_SITE_ID} AND IsDeleted=0 LIMIT ${parseInt(
+        limit
+    )} OFFSET ${parseInt(offset)}`;
     const [rows] = await sqlConnection.execute(query);
 
-    console.log(`🟢 Lấy ${rows.length} bản ghi từ ${tableName} (Offset: ${offset})`);
+    console.log(
+        `🟢 Lấy ${rows.length} bản ghi từ ${tableName} (Offset: ${offset})`
+    );
     return rows;
 }
 
 async function findCategory(records, db) {
     if (records.length === 0) return [];
-    const ids = records.map(item => item.IdCategory);
-    const rows = await db.collection("courseCatalog").find({ oldId: { $in: ids }, siteId: +NEW_SITE_ID, }).toArray();
+    const ids = records.map((item) => item.IdCategory);
+    const rows = await db
+        .collection("courseCatalog")
+        .find({ oldId: { $in: ids }, siteId: +NEW_SITE_ID })
+        .toArray();
     return rows;
 }
 
+async function findUserByOldId(id, dbUser) {
+    const user = await dbUser.collection("user").findOne({ mobieduUserId: id });
+    return user?._id?.toString() || "";
+}
 
-
-async function CreateOrFindTeacher(teacherIds, mongoDbCourse, sqlConnectionUser) {
+async function CreateOrFindTeacher(
+    teacherIds,
+    mongoDbCourse,
+    sqlConnectionUser
+) {
     if (!Array.isArray(teacherIds)) {
         teacherIds = [teacherIds];
     }
@@ -68,14 +80,11 @@ async function CreateOrFindTeacher(teacherIds, mongoDbCourse, sqlConnectionUser)
     for (const teacherId of teacherIds) {
         if (!teacherId) continue;
 
-
-
-
-        let teacher = await mongoDbCourse.collection('teachers').findOne({ oldId: teacherId, siteId: +NEW_SITE_ID });
+        let teacher = await mongoDbCourse
+            .collection("teachers")
+            .findOne({ oldId: teacherId, siteId: +NEW_SITE_ID });
 
         if (!teacher) {
-
-
             const query = `SELECT * FROM Users WHERE Id=${teacherId}`;
             const [rows] = await sqlConnectionUser.execute(query);
             const user = rows[0];
@@ -97,10 +106,12 @@ async function CreateOrFindTeacher(teacherIds, mongoDbCourse, sqlConnectionUser)
                 description: user.Description,
                 siteId: +NEW_SITE_ID,
                 oldId: teacherId,
-                createdAt: new Date()
+                createdAt: new Date(),
             };
 
-            const result = await mongoDbCourse.collection('teachers').insertOne(newTeacher);
+            const result = await mongoDbCourse
+                .collection("teachers")
+                .insertOne(newTeacher);
             teacher = newTeacher;
         }
 
@@ -110,26 +121,30 @@ async function CreateOrFindTeacher(teacherIds, mongoDbCourse, sqlConnectionUser)
     return teacherObjectIds;
 }
 
-
-
 async function deleteOldUnit(db, level) {
     await db.collection(level).deleteMany({
         siteId: +NEW_SITE_ID,
-        oldId: { $ne: null }
+        oldId: { $ne: null },
     });
 }
 
-async function migrateTable(sqlConnection, mongoDbCourse, mongoDbExam, tableName, sqlConnectionUser) {
+async function migrateTable(
+    sqlConnection,
+    mongoDbUser,
+    mongoDbCourse,
+    mongoDbExam,
+    tableName,
+    sqlConnectionUser
+) {
     console.log(`🔄 Đang di chuyển bảng ${tableName}...`);
 
-
-    await deleteOldUnit(mongoDbCourse, 'course')
-    await deleteOldUnit(mongoDbCourse, 'teachers')
-    await deleteOldUnit(mongoDbCourse, 'chapter')
-    await deleteOldUnit(mongoDbCourse, 'lesson')
-    await deleteOldUnit(mongoDbCourse, 'examSet')
-    await deleteOldUnit(mongoDbExam, 'roomTest')
-    await deleteOldUnit(mongoDbExam, 'examSetRoomTest')
+    await deleteOldUnit(mongoDbCourse, "course");
+    await deleteOldUnit(mongoDbCourse, "teachers");
+    await deleteOldUnit(mongoDbCourse, "chapter");
+    await deleteOldUnit(mongoDbCourse, "lesson");
+    await deleteOldUnit(mongoDbCourse, "examSet");
+    await deleteOldUnit(mongoDbExam, "roomTest");
+    await deleteOldUnit(mongoDbExam, "examSetRoomTest");
 
     let offset = 0;
     while (true) {
@@ -140,19 +155,25 @@ async function migrateTable(sqlConnection, mongoDbCourse, mongoDbExam, tableName
         const mappedCourse = [];
 
         for (const row of rows) {
-            const categoryItem = row.IdCategory ? category.find(item => row.IdCategory === item.oldId) : '';
-            const cateId = categoryItem ? categoryItem._id.toString() : '';
-
+            const categoryItem = row.IdCategory
+                ? category.find((item) => row.IdCategory === item.oldId)
+                : "";
+            const cateId = categoryItem ? categoryItem._id.toString() : "";
+            const authorId = await findUserByOldId(row.CreatedBy, mongoDbUser);
             mappedCourse.push({
                 name: row.Name,
-                authorId: '', // authorId.toString()
+                authorId: authorId,
                 isHidden: row.Status == 2 ? 1 : 0,
                 avatarURL: row.ThumbnailFileUrl,
                 coverImageURL: row.CoverFileUrl,
                 introVideoURL: "",
                 catalogId: cateId,
                 teacherId: "", // teacherId.toString()
-                teacherIds: await CreateOrFindTeacher([...new Set([row.IDTeacher, row.IDCoTeacher].filter(Boolean))], mongoDbCourse, sqlConnectionUser),
+                teacherIds: await CreateOrFindTeacher(
+                    [...new Set([row.IDTeacher, row.IDCoTeacher].filter(Boolean))],
+                    mongoDbCourse,
+                    sqlConnectionUser
+                ),
                 maximumCompletionTime: 10 * 365,
                 intro: row.WelcomeCourse,
                 info: row.AboutCourse,
@@ -166,15 +187,15 @@ async function migrateTable(sqlConnection, mongoDbCourse, mongoDbExam, tableName
                 isRegister: row.IsOpenCourse == 1 ? 0 : 1,
                 view: 10000,
                 status: row.ApproveStatus == 1 ? 0 : 1,
-                createAt: row.CreatedAt,
-                updateAt: row.ModifiedAt,
+                createdAt: row.CreatedAt,
+                updatedAt: row.ModifiedAt,
                 backgroundCertificate: null,
-                companyId: -1,
+                // companyId: -1,
                 // createOn: moment().unix(),
                 isCertification: true,
                 numberLesson: +row.Price || 0,
                 requiredScore: +row.SellingPrice || 0,
-                oldId: row.Id
+                oldId: row.Id,
             });
         }
 
@@ -183,7 +204,7 @@ async function migrateTable(sqlConnection, mongoDbCourse, mongoDbExam, tableName
             break;
         }
 
-        await mongoDbCourse.collection('course').insertMany(mappedCourse);
+        await mongoDbCourse.collection("course").insertMany(mappedCourse);
 
         offset += +BATCH_SIZE;
     }
@@ -198,10 +219,18 @@ async function migrate() {
     const mongoClient = new MongoClient(MONGO_URL);
     await mongoClient.connect();
     const mongoDbCourse = mongoClient.db(MONGO_DATABASE_COURSE);
-    const mongoDbExam = mongoClient.db('db_moocs_exam');
+    const mongoDbExam = mongoClient.db("db_moocs_exam");
+    const mongoDbUser = mongoClient.db(MONGO_DATABASE_USER);
 
     try {
-        await migrateTable(sqlConnection, mongoDbCourse, mongoDbExam, 'Courses', sqlConnectionUser);
+        await migrateTable(
+            sqlConnection,
+            mongoDbUser,
+            mongoDbCourse,
+            mongoDbExam,
+            "Courses",
+            sqlConnectionUser
+        );
     } catch (error) {
         console.error("❌ Lỗi khi di chuyển dữ liệu:", error);
     } finally {

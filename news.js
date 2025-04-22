@@ -69,7 +69,7 @@ async function migrateTable(sqlConnection, mongoDb, tableName) {
         const mappedNews = rows.map((row) => {
             const category = categoryNews.find(item => item.oldId === row.IdCategory) || categoryDefault
             return {
-                slug: row.Slug,
+                slug: row.Slug + "_" + NEW_SITE_ID,
                 url_img: row.ThumbnailFileUrl, //? row.ThumbnailFileUrl.replace("https://cdn4t.mobiedu.vn", "https://media-moocs.mobifone.vn") : ""
                 title: row.Title,
                 short_description: row.Description,

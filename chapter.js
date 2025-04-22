@@ -42,6 +42,7 @@ async function fetchBatch(sqlConnection, tableName, offset, limit, courseOldId) 
     SELECT * FROM ${tableName} 
     WHERE IDCourse IN (${courseOldId.filter(item => !!item).map(id => parseInt(id)).join(",")})
     AND IdParent IS NULL 
+    AND IsDeleted = 0
     LIMIT ${parseInt(limit)} 
     OFFSET ${parseInt(offset)}
     `;
