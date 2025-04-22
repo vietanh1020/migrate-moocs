@@ -1,5 +1,5 @@
 import dotenv from "dotenv";
-import { MongoClient } from "mongodb";
+import { MongoClient, ObjectId } from "mongodb";
 import mysql from "mysql2/promise";
 
 // Load biến môi trường từ .env
@@ -14,6 +14,7 @@ const {
     MONGO_URL,
     MONGO_DATABASE_LEVEL,
     MONGO_DATABASE_USER,
+    MONGO_DATABASE_COURSE,
     BATCH_SIZE,
     NEW_SITE_ID,
     OLD_SITE_ID,
@@ -66,9 +67,54 @@ async function deleteOldUsers(db) {
     });
 }
 
-async function migrateTable(sqlConnection, mongoDb, tableName, mongoDbLevel) {
+async function deleteOldTeacher(dbCourse) {
+    await dbCourse.collection('teachers').deleteMany({
+        siteId: +NEW_SITE_ID,
+        oldId: { $ne: null },  // Ensures oldId is not null
+        fromMig: "USER"
+    });
+}
+
+
+async function CreateOrFindTeacher(
+    teacherInDb,
+    mongoDbCourse,
+) {
+    let teacher = await mongoDbCourse
+        .collection("teachers")
+        .findOne({ oldId: teacherInDb.Id, siteId: +NEW_SITE_ID });
+
+    if (teacher) return teacher._id.toString()
+
+    if (!teacher) {
+        const newTeacher = {
+            _id: new ObjectId(),
+            avatar: teacherInDb.AvatarUrl,
+            fullName: teacherInDb.FullName,
+            email: teacherInDb.Email,
+            phone: teacherInDb.Phone,
+            personal: "",
+            linkYoutube: "",
+            linkFb: "",
+            description: teacherInDb.Description,
+            siteId: +NEW_SITE_ID,
+            oldId: teacherInDb.Id,
+            createdAt: new Date(),
+            fromMig: "USER"
+        };
+
+        await mongoDbCourse
+            .collection("teachers")
+            .insertOne(newTeacher);
+
+        return newTeacher._id.toString();
+    }
+}
+
+async function migrateTable(sqlConnection, mongoDb, tableName, mongoDbLevel, mongoDbCourse) {
     console.log(`🔄 Đang xóa user MIGRATE cũ...`);
     await deleteOldUsers(mongoDb)
+    await deleteOldTeacher(mongoDbCourse)
 
     console.log(`🔄 Đang di chuyển bảng ${tableName}...`);
 
@@ -89,10 +135,17 @@ async function migrateTable(sqlConnection, mongoDb, tableName, mongoDbLevel) {
             const level2 = managerLevel2.find(item => managerLevel.includes(item.oldId))
             const level3 = managerLevel3.find(item => managerLevel.includes(item.oldId))
 
+            const role = getRoleName(row.IdType)
+
+            let IDTeacher = ""
+            if (role == "TEACHER") {
+                IDTeacher = await CreateOrFindTeacher(row, mongoDbCourse);
+            }
+
             mappedUsers.push({
                 accessFailedCount: 0,
                 address: "",
-                avatar: row.AvatarUrl ? row.AvatarUrl.replace("https://cdn4t.mobiedu.vn", "https://media-moocs.mobifone.vn") : "",
+                avatar: row.AvatarUrl, //? row.AvatarUrl.replace("https://cdn4t.mobiedu.vn", "https://media-moocs.mobifone.vn") : ""
                 birthday: row.Birthday,
                 dateLogin: row.LastLoginDate,
                 email: row.Email || "",
@@ -119,9 +172,9 @@ async function migrateTable(sqlConnection, mongoDb, tableName, mongoDbLevel) {
                 mobieduUserId: row.Id,
                 listRoles: {},
                 listPolicy: [],
-                role: getRoleName(row.IdType),
+                role: role,
                 functionsTree: {},
-                idTeacher: "",
+                idTeacher: IDTeacher,
             });
         }
 
@@ -146,10 +199,11 @@ async function migrate() {
     await mongoClient.connect();
     const mongoDb = mongoClient.db(MONGO_DATABASE_USER);
     const mongoDbLevel = mongoClient.db(MONGO_DATABASE_LEVEL);
+    const mongoDbCourse = mongoClient.db(MONGO_DATABASE_COURSE);
 
 
     try {
-        await migrateTable(sqlConnection, mongoDb, 'Users', mongoDbLevel);
+        await migrateTable(sqlConnection, mongoDb, 'Users', mongoDbLevel, mongoDbCourse);
     } catch (error) {
         console.error("❌ Lỗi khi di chuyển dữ liệu:", error);
     } finally {

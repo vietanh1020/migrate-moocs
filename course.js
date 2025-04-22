@@ -107,6 +107,7 @@ async function CreateOrFindTeacher(
                 siteId: +NEW_SITE_ID,
                 oldId: teacherId,
                 createdAt: new Date(),
+                fromMig: "COURSE",
             };
 
             const result = await mongoDbCourse
@@ -128,6 +129,15 @@ async function deleteOldUnit(db, level) {
     });
 }
 
+
+async function deleteOldTeacher(db, level) {
+    await db.collection(level).deleteMany({
+        siteId: +NEW_SITE_ID,
+        oldId: { $ne: null },
+        fromMig: "COURSE",
+    });
+}
+
 async function migrateTable(
     sqlConnection,
     mongoDbUser,
@@ -139,7 +149,7 @@ async function migrateTable(
     console.log(`🔄 Đang di chuyển bảng ${tableName}...`);
 
     await deleteOldUnit(mongoDbCourse, "course");
-    await deleteOldUnit(mongoDbCourse, "teachers");
+    await deleteOldTeacher(mongoDbCourse, "teachers");
     await deleteOldUnit(mongoDbCourse, "chapter");
     await deleteOldUnit(mongoDbCourse, "lesson");
     await deleteOldUnit(mongoDbCourse, "examSet");

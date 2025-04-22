@@ -1,7 +1,6 @@
 import mysql from "mysql2/promise";
 import { MongoClient, ObjectId, UUID } from "mongodb";
 import dotenv from "dotenv";
-import moment from "moment";
 
 // Load biến môi trường từ .env
 dotenv.config();
@@ -84,7 +83,7 @@ async function migrateTable(sqlConnection, mongoDb, tableName) {
                 oldId: row.Id,
                 idManagementLevel: "",
                 siteId: +NEW_SITE_ID,
-                createdAt: row.CreateAt,
+                createdAt: row.CreatedAt,
             });
         }
 
