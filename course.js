@@ -129,7 +129,6 @@ async function deleteOldUnit(db, level) {
     });
 }
 
-
 async function deleteOldTeacher(db, level) {
     await db.collection(level).deleteMany({
         siteId: +NEW_SITE_ID,

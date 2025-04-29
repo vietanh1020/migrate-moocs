@@ -265,6 +265,7 @@ async function findChapter(records, db) {
 
 function getType(row) {
     if (row.ExamType == 'room') return 5;
+    if (row.ExamType == 'exercise') return 5;
     if (row.VideoFileType == "Video") return 0;
     if (row.VideoFileType == "Youtube") return 1;
     if (row.VideoFileType == "Scorm") return 3;
@@ -283,7 +284,7 @@ function getType(row) {
 
 function getTypeEnd(row) {
     if (row.VideoFileType == "Video" || row.VideoFileType == "Youtube") return 0;
-    if (row.ExamType == 'room') return 1
+    if (row.ExamType == 'room' || row.ExamType == 'exercise') return 1
 
     return 2
 }
