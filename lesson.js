@@ -124,6 +124,7 @@ async function createNewExam(mongoDbCourse, mongoDbExam, roomInMysql, examInMysq
                 levelQuestionId: "",
                 listAnswer: item.answers.map((ans, index) => {
                     return {
+                        select: ans.id,
                         textAnswer: ans.content,
                         isTrue: ans.id === item.correct,
                         position: index,
@@ -137,6 +138,7 @@ async function createNewExam(mongoDbCourse, mongoDbExam, roomInMysql, examInMysq
                 updateAt: item.updated_at || 0,
                 createBy: "",
                 updateBy: "",
+                oldId: item.id
             },
             parent_id: item.parent_id,
             group: item.parent_id ? groupIdMap[item.parent_id].index : item.group_id ? groupIdMap[item.group_id].index : -1,
@@ -297,7 +299,6 @@ async function findCourseBySite(db) {
 async function migrateTable(sqlConnection, mongoDbCourse, mongoDbExam, tableName) {
     console.log(`🔄 Đang di chuyển bảng ${tableName}...`);
 
-
     const courseInMongo = await findCourseBySite(mongoDbCourse)
 
     const courseOldId = courseInMongo.map(item => item.oldId)
@@ -355,12 +356,8 @@ async function migrateTable(sqlConnection, mongoDbCourse, mongoDbExam, tableName
             });
         }
 
-
         // Kiểm tra nếu rows trống thì thoát khỏi vòng lặp
         if (!rows || rows.length === 0) break;
-
-
-
 
         await mongoDbCourse.collection('lesson').insertMany(mappedLesson);
 
