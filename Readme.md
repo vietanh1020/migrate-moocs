@@ -17,19 +17,24 @@ B2: Sửa .env
     2. node manager_level_2.js
     3. node manager_level_3.js
 
-    4. node user.js
+    4. node position.js
 
-    5. node user_group.js
+    5. node user.js
 
-    6. node course_category.js
+    6. node user_group.js
 
-    7. node course.js
+    7. node course_category.js
 
-    8. node chapter.js
+    8. node course.js
 
-    9. node lesson.js
+    9. node chapter.js
 
-    7. node course_log.js
+    10. node lesson.js
 
-    10  node news_category.js
-    11. node news.js;
+    11  node news_category.js
+    12. node news.js;
+    13. node course_log.js;
+
+    14. node course_lesson_log.js;
+    15. node student_answer_log.js;
+    16. node certificate.js

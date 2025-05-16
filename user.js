@@ -13,6 +13,7 @@ const {
     MYSQL_DATABASE_AUTH,
     MONGO_URL,
     MONGO_DATABASE_LEVEL,
+    MONGO_DATABASE_ADMIN,
     MONGO_DATABASE_USER,
     MONGO_DATABASE_COURSE,
     BATCH_SIZE,
@@ -51,8 +52,20 @@ async function fetchBatch(sqlConnection, tableName, offset, limit) {
 async function fetchManagerLevel(sqlConnection, IdUser) {
     const query = `SELECT * FROM UsersInUnitManagements WHERE IdUser=${IdUser}`;
     const [rows] = await sqlConnection.execute(query);
+    return rows;
+}
 
-    return rows.map(item => item.IdUnit);
+
+async function fetchJobPosition(sqlConnection, IdUser) {
+    const query = `SELECT * FROM UsersJobPosition WHERE IdUser=${IdUser}`;
+    const [rows] = await sqlConnection.execute(query);
+
+    return rows?.[0] || null;
+}
+
+async function findAllPosition(mongoDbAdmin) {
+    const rows = await mongoDbAdmin.collection("position").find({ siteId: + NEW_SITE_ID }).toArray();
+    return rows;
 }
 
 async function findManagerLevel(mongoDbLevel, level) {
@@ -111,7 +124,7 @@ async function CreateOrFindTeacher(
     }
 }
 
-async function migrateTable(sqlConnection, mongoDb, tableName, mongoDbLevel, mongoDbCourse) {
+async function migrateTable(sqlConnection, mongoDb, tableName, mongoDbLevel, mongoDbCourse, mongoDbAdmin) {
     console.log(`🔄 Đang xóa user MIGRATE cũ...`);
     await deleteOldUsers(mongoDb)
     await deleteOldTeacher(mongoDbCourse)
@@ -122,6 +135,8 @@ async function migrateTable(sqlConnection, mongoDb, tableName, mongoDbLevel, mon
     const managerLevel2 = await findManagerLevel(mongoDbLevel, 'level-2');
     const managerLevel3 = await findManagerLevel(mongoDbLevel, 'level-3');
 
+    const listPositon = await findAllPosition(mongoDbAdmin)
+
     let offset = 0;
     while (true) {
         const rows = await fetchBatch(sqlConnection, tableName, offset, BATCH_SIZE);
@@ -129,7 +144,9 @@ async function migrateTable(sqlConnection, mongoDb, tableName, mongoDbLevel, mon
 
         for (const row of rows) {
 
-            const managerLevel = await fetchManagerLevel(sqlConnection, row.Id)
+            const managerLevelRec = await fetchManagerLevel(sqlConnection, row.Id)
+            const managerLevel = managerLevelRec.map(item => item.IdUnit);
+            const jobPosition = await fetchJobPosition(sqlConnection, row.Id)
 
             const level1 = managerLevel1.find(item => managerLevel.includes(item.oldId))
             const level2 = managerLevel2.find(item => managerLevel.includes(item.oldId))
@@ -142,6 +159,8 @@ async function migrateTable(sqlConnection, mongoDb, tableName, mongoDbLevel, mon
                 IDTeacher = await CreateOrFindTeacher(row, mongoDbCourse);
             }
 
+            const positionMongo = !!jobPosition ? listPositon.find(item => item.oldId == jobPosition.IdPosition) : null
+
             mappedUsers.push({
                 accessFailedCount: 0,
                 address: "",
@@ -153,7 +172,7 @@ async function migrateTable(sqlConnection, mongoDb, tableName, mongoDbLevel, mon
                 gender: row.IdGender || 0,
                 exploreField: {},
                 siteId: +NEW_SITE_ID,
-                positionId: -1,
+                positionId: !!positionMongo ? positionMongo?._id.toString() : -1,
                 infoManagementLevel: null,
                 infoManagementLevel: {
                     managerLevel1Id: level3?.level1.toString() || level2?.level1.toString() || level1?._id.toString() || "",
@@ -162,10 +181,10 @@ async function migrateTable(sqlConnection, mongoDb, tableName, mongoDbLevel, mon
                 },
                 isLockoutEnabled: row.IsBlocked == 0 ? true : false,
                 lockoutEndDate: null,
-                passwordHash: row.Pwd,
+                passwordHash: "AQAAAAIAAYagAAAAEF/xjjPGTzQb6vV7LwZowfmvbHEmHiqnFpqbHy79JmfLsCbZhUqpwdPOdMt77sameg==",
                 phone: row.Phone || "",
-                pwd: "Migrate@2025",
-                securityStamp: "",
+                pwd: "Cantho@123",
+                securityStamp: "KX25LUUYU6RI4T7H3IY5MINGRQDEZ4UH",
                 status: 1,
                 timeUpdate: null,
                 userName: row.Email,
@@ -201,9 +220,11 @@ async function migrate() {
     const mongoDbLevel = mongoClient.db(MONGO_DATABASE_LEVEL);
     const mongoDbCourse = mongoClient.db(MONGO_DATABASE_COURSE);
 
+    const mongoDbAdmin = mongoClient.db(MONGO_DATABASE_ADMIN);
+
 
     try {
-        await migrateTable(sqlConnection, mongoDb, 'Users', mongoDbLevel, mongoDbCourse);
+        await migrateTable(sqlConnection, mongoDb, 'Users', mongoDbLevel, mongoDbCourse, mongoDbAdmin);
     } catch (error) {
         console.error("❌ Lỗi khi di chuyển dữ liệu:", error);
     } finally {

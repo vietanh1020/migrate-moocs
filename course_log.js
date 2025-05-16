@@ -1,6 +1,7 @@
-import dotenv from "dotenv";
-import { MongoClient, ObjectId } from "mongodb";
 import mysql from "mysql2/promise";
+import { MongoClient, ObjectId } from "mongodb";
+import dotenv from "dotenv";
+import moment from "moment";
 
 // Load biến môi trường từ .env
 dotenv.config();
@@ -17,10 +18,9 @@ const {
     NEW_SITE_ID,
     OLD_SITE_ID,
     MONGO_DATABASE_USER,
+    IS_PROD = true
 } = process.env;
 
-const IDCERT = "681c0e5248357e7c4bc048be"
-const LINKCERT = "https://s3.pm-ptdv.com/moocs/images/2783ca76-4bc1-497f-88f2-834932a7bd68.png"
 
 // Kết nối MySQL
 async function connectMySQL() {
@@ -62,6 +62,14 @@ async function findCourses(mongoDbCourse) {
     return courses;
 }
 
+async function findLesson(mongoDbCourse) {
+    const courses = await mongoDbCourse
+        .collection("lesson")
+        .find({ siteId: +NEW_SITE_ID })
+        .toArray(); // Chuyển cursor thành mảng
+    return courses;
+}
+
 async function findUserByOld(id, dbUser) {
     const user = await dbUser.collection("user").findOne({ mobieduUserId: id });
     return user?._id?.toString() || "";
@@ -73,7 +81,23 @@ async function findAuthor(id, dbUser) {
     );
 }
 
-async function createClassRoom(mongoDbUser, courses) {
+
+async function getCertDefault(mongoDbCourse) {
+    const certDefault = await mongoDbCourse.collection("mCertificate").findOne({ siteId: +NEW_SITE_ID });
+    if (certDefault) return certDefault;
+
+    const newCert = {
+        _id: new ObjectId(),
+        name: "Chứng chỉ 1",
+        url: !IS_PROD ? "https://media-moocs.mobifone.vn/moocs/images/5b1e2397-5c99-4f43-a163-d77d65790611.png" : "https://s3.pm-ptdv.com/moocs/images/0bd4c310-b798-4dfa-b486-9a2d511c32d1.png",
+        siteId: +NEW_SITE_ID
+    }
+
+    await mongoDbCourse.collection("mCertificate").insertOne(newCert);
+    return newCert
+}
+
+async function createClassRoom(mongoDbUser, courses, IDCERT) {
     const mappedClass = [];
 
     for (const course of courses) {
@@ -138,7 +162,7 @@ async function createClassRoom(mongoDbUser, courses) {
     return mappedClass
 }
 
-function createStudentClass(row, course, classRoom, userId) {
+function createStudentClass(row, course, classRoom, userId, IDCERT) {
     const item = {
         _id: new ObjectId(),
         createdAt: new Date(row.CreatedDate),
@@ -164,7 +188,7 @@ function createStudentClass(row, course, classRoom, userId) {
                 certificate: null
             }
         ],
-        status: 1,
+        status: row.IsCompleted ? 3 : 2,
         completedPercent: Math.round((row.TotalCompletedLessons / row.TotalLessons) * 100),
         completedCourses: [],
         areLearningCourses: [],
@@ -176,7 +200,6 @@ function createStudentClass(row, course, classRoom, userId) {
 
     return item
 }
-
 
 function createStudentCourse(row, course, classRoom, userId) {
     const newsItem = {
@@ -192,7 +215,7 @@ function createStudentCourse(row, course, classRoom, userId) {
         completedDate: new Date(row.ModifiedDate),
         isRewind: true, // tua
         isOpenedAllLessons: true, // mở
-        currentStudentLessonId: "", // bài 8 :))
+        currentStudentLessonId: null, // bài 8 :))
         progressDoneLesson: Math.round((row.TotalCompletedLessons / row.TotalLessons) * 100),
         markPassLastExam: 0, // điểm hoàn thành
         maximumCompletionTime: 365 * 10,
@@ -207,19 +230,60 @@ function createStudentCourse(row, course, classRoom, userId) {
     return newsItem
 }
 
+async function createStudentLesson(studentCourse, allLesson, mongoDbCourse) {
+    const courseId = studentCourse.courseId;
+
+    const lessonCourse = allLesson.filter(item => item.courseId == courseId)
+
+    const result = lessonCourse.map(lesson => {
+        return {
+            _id: new ObjectId(),
+            createdAt: new Date(studentCourse.createdAt),
+            updatedAt: new Date(studentCourse.updatedAt),
+            classId: studentCourse.classId,
+            lessonId: lesson._id.toString(),
+            studentCourseId: studentCourse._id.toString(),
+            courseId: lesson.courseId,
+            chapterId: lesson.chapterId,
+            order: lesson.order,
+            userId: studentCourse.userId,
+            status: 0,
+            completedPercent: 0,
+            isLocked: false,
+            noteContent: null,
+            currentTime: 0,
+            questions: null,
+            completedTime: 0,
+            roomTestId: lesson.roomTestId,
+            isPassRoomTest: false,
+            oldId: -1,
+            IdUser: studentCourse.oldIdUser,
+            IdLesson: lesson.oldId,
+            siteId: +NEW_SITE_ID
+        }
+    })
+
+    await mongoDbCourse.collection('studentLesson').insertMany(result);
+}
+
 async function migrateTable(sqlConnection, mongoDbCourse, mongoDbClass, mongoDbUser, tableName) {
     console.log(`🔄 Đang di chuyển bảng ${tableName}...`);
 
     await deleteOldData(mongoDbCourse, "studentCourse")
     await deleteOldData(mongoDbCourse, "studentClass")
+    await deleteOldData(mongoDbCourse, "studentLesson")
     await deleteOldData(mongoDbClass, "classRoom")
+
+    const cert = await getCertDefault(mongoDbCourse)
+    const IDCERT = cert?._id.toString()
 
     let offset = 0;
 
     const courses = await findCourses(mongoDbCourse);
+    const allLesson = await findLesson(mongoDbCourse)
 
     // tạo lớp học 
-    const classRooms = await createClassRoom(mongoDbUser, courses)
+    const classRooms = await createClassRoom(mongoDbUser, courses, IDCERT)
 
     const userInRoom = {}
     // hoàn thành khóa học
@@ -238,6 +302,9 @@ async function migrateTable(sqlConnection, mongoDbCourse, mongoDbClass, mongoDbU
             const classRoomId = classRoom?._id.toString();
             const userId = await findUserByOld(row.IdCreator, mongoDbUser)
 
+            if (!userId) continue
+
+
             if (!userInRoom[classRoomId]) {
                 userInRoom[classRoomId] = [];
             }
@@ -246,7 +313,9 @@ async function migrateTable(sqlConnection, mongoDbCourse, mongoDbClass, mongoDbU
             }
 
             const newStudentCourse = createStudentCourse(row, course, classRoom, userId)
-            const newStudentClass = createStudentClass(row, course, classRoom, userId)
+            const newStudentClass = createStudentClass(row, course, classRoom, userId, IDCERT)
+
+            await createStudentLesson(newStudentCourse, allLesson, mongoDbCourse)
 
             mappedStudentCourse.push(newStudentCourse);
             mappedStudentClass.push(newStudentClass);
